@@ -221,10 +221,6 @@ fn chord_signal(base_freqs : &[f32], harmonics : &[f32]) -> Box<dyn Signal> {
 }
 
 fn main() {
-
-    // Chcemy wyprodukować tablicę floatów
-    // to będzie audio
-
     const PITCHES_LEN: usize = 3;
     const BASE_PITCH: f32 = 220.0;
     /// The three pitches in a perfectly tuned A3 minor chord
