@@ -1,26 +1,20 @@
-use fon::chan::{Ch16, Ch32, Ch64};
+use fon::Audio;
+use fon::chan::Ch32;
 use fon::chan::Channel;
-use fon::{Audio, Frame};
-use twang::noise::White;
-use twang::Synth;
-
-use std::ops::Add;
-use std::time::Duration;
 
 /// First ten harmonic volumes of a piano sample (sounds like electric piano).
 const HARMONICS: [f32; 10] = [
     0.700, 0.243, 0.229, 0.095, 0.139, 0.087, 0.288, 0.199, 0.124, 0.090,
 ];
 
-const TAU : f32 = 6.283185307179586;
-const SAMPLE_PERIOD : f32 = 1.0 / 48_000.0;
+const TAU: f32 = 6.283_185_5;
+const SAMPLE_PERIOD: f32 = 1.0 / 48_000.0;
 
-const HALF_STEP: f32 = 1.0594630943592953;
+const HALF_STEP: f32 = 1.059_463_1;
 
 fn note(base: f32, count: f32) -> f32 {
     base * HALF_STEP.powf(count)
 }
-
 
 // State of the synthesizer.
 // #[derive(Default)]
@@ -37,7 +31,7 @@ fn save_to_wav(file: &str, audio: Audio<Ch32, 2>) {
         channels: 2,
         sample_rate: audio.sample_rate().get(),
         bits_per_sample: 32,
-        sample_format: hound::SampleFormat::Float
+        sample_format: hound::SampleFormat::Float,
     };
 
     let mut writer = hound::WavWriter::create(file, spec).unwrap();
@@ -106,55 +100,52 @@ struct ADSR {
 // }
 
 trait Signal {
-    fn sample(&mut self, t : f32) -> Ch32;
+    fn sample(&mut self, t: f32) -> Ch32;
 }
 struct Const {
-    value : f32,
+    value: f32,
 }
 
 impl Const {
-    fn new(value : f32) -> Self {
+    fn new(value: f32) -> Self {
         Self { value }
     }
 }
 
 impl Signal for Const {
-    fn sample(&mut self, _t : f32) -> Ch32 {
+    fn sample(&mut self, _t: f32) -> Ch32 {
         Ch32::from(self.value)
     }
 }
 
 impl Signal for f32 {
-    fn sample(&mut self, _t : f32) -> Ch32 {
+    fn sample(&mut self, _t: f32) -> Ch32 {
         Ch32::from(*self)
     }
 }
 
 struct Sine {
-    freq : Box<dyn Signal>,
-    state : f32,
+    freq: Box<dyn Signal>,
+    state: f32,
 }
 
 impl Sine {
-    fn new(freq : Box<dyn Signal>) -> Self {
-        Self {
-            freq,
-            state : 0.0,
-        }
+    fn new(freq: Box<dyn Signal>) -> Self {
+        Self { freq, state: 0.0 }
     }
 }
 
 impl Sine {
-    fn new_from_const(freq : f32) -> Self {
+    fn new_from_const(freq: f32) -> Self {
         Self {
             freq: Box::new(Const::new(freq)),
-            state : 0.0,
+            state: 0.0,
         }
     }
 }
 
 impl Signal for Sine {
-    fn sample(&mut self, t : f32) -> Ch32 {
+    fn sample(&mut self, t: f32) -> Ch32 {
         let out = (self.state).cos();
         self.state = (self.state + TAU * SAMPLE_PERIOD * self.freq.sample(t).to_f32()) % TAU;
         out.into()
@@ -162,34 +153,34 @@ impl Signal for Sine {
 }
 
 struct Gain {
-    signal : Box<dyn Signal>,
-    gain : f32,
+    signal: Box<dyn Signal>,
+    gain: f32,
 }
 
 impl Signal for Gain {
-    fn sample(&mut self, t : f32) -> Ch32 {
+    fn sample(&mut self, t: f32) -> Ch32 {
         Ch32::from(self.signal.sample(t).to_f32() * self.gain)
     }
 }
 
 struct Sum {
-    a : Box<dyn Signal>,
-    b : Box<dyn Signal>,
+    a: Box<dyn Signal>,
+    b: Box<dyn Signal>,
 }
 
 impl Sum {
-    fn new(a : Box<dyn Signal>, b : Box<dyn Signal>) -> Self {
+    fn new(a: Box<dyn Signal>, b: Box<dyn Signal>) -> Self {
         Self { a, b }
     }
 }
 
 impl Signal for Sum {
-    fn sample(&mut self, t : f32) -> Ch32 {
+    fn sample(&mut self, t: f32) -> Ch32 {
         self.a.sample(t) + self.b.sample(t)
     }
 }
 
-fn linear_combination_of_harmonics(base_freq : Const, harmonics : &[f32]) -> Box<dyn Signal> {
+fn linear_combination_of_harmonics(base_freq: Const, harmonics: &[f32]) -> Box<dyn Signal> {
     harmonics.iter().enumerate().fold(
         Box::new(Const::new(0.0)) as Box<dyn Signal>,
         |acc, (i, &vol)| {
@@ -199,23 +190,17 @@ fn linear_combination_of_harmonics(base_freq : Const, harmonics : &[f32]) -> Box
                 signal: Box::new(sine),
                 gain: vol,
             };
-            Box::new(Sum {
-                a: acc,
-                b: Box::new(gain),
-            })
+            Box::new(Sum::new(acc, Box::new(gain)))
         },
     )
 }
 
-fn chord_signal(base_freqs : &[f32], harmonics : &[f32]) -> Box<dyn Signal> {
+fn chord_signal(base_freqs: &[f32], harmonics: &[f32]) -> Box<dyn Signal> {
     base_freqs.iter().fold(
         Box::new(Const::new(0.0)) as Box<dyn Signal>,
         |acc, &base_freq| {
             let signal = linear_combination_of_harmonics(Const::new(base_freq), harmonics);
-            Box::new(Sum {
-                a: acc,
-                b: signal,
-            })
+            Box::new(Sum::new(acc, signal))
         },
     )
 }
@@ -223,11 +208,16 @@ fn chord_signal(base_freqs : &[f32], harmonics : &[f32]) -> Box<dyn Signal> {
 fn main() {
     const PITCHES_LEN: usize = 3;
     const BASE_PITCH: f32 = 220.0;
-    /// The three pitches in a perfectly tuned A3 minor chord
-    let pitches: [f32; PITCHES_LEN] = [note(BASE_PITCH, 0.0), note(BASE_PITCH, 3.0), note(BASE_PITCH, 7.0)];
+
+    // The three pitches in a perfectly tuned A3 minor chord
+    let pitches: [f32; PITCHES_LEN] = [
+        note(BASE_PITCH, 0.0),
+        note(BASE_PITCH, 3.0),
+        note(BASE_PITCH, 7.0),
+    ];
     let mut signal = chord_signal(&pitches, &HARMONICS);
 
-    let mut audio = Audio::<Ch32, 2>::with_silence(48_000, 48_000 * 1);
+    let mut audio = Audio::<Ch32, 2>::with_silence(48_000, 48_000);
 
     const VOLUME: f32 = 1.0 / 10.0;
     for (i, frame) in audio.iter_mut().enumerate() {
