@@ -15,12 +15,12 @@ const HARMONICS: [f32; 10] = [
 const TAU : f32 = 6.283185307179586;
 const SAMPLE_PERIOD : f32 = 1.0 / 48_000.0;
 
-// const PITCHES_LEN: usize = 3;
-// /// The three pitches in a perfectly tuned A3 minor chord
-// const PITCHES: [f32; PITCHES_LEN] = [220.0, 220.0 * 32.0 / 27.0, 220.0 * 3.0 / 2.0];
-// const PITCHES: [f32; PITCHES_LEN] = [220.0];
-/// Volume of the piano
-const VOLUME: f32 = 1.0 / 10.0;
+const HALF_STEP: f32 = 1.0594630943592953;
+
+fn note(base: f32, count: f32) -> f32 {
+    base * HALF_STEP.powf(count)
+}
+
 
 // State of the synthesizer.
 // #[derive(Default)]
@@ -30,33 +30,6 @@ const VOLUME: f32 = 1.0 / 10.0;
 //     // 10 harmonics for 3 pitches.
 //     piano: [[Sine; 10]; PITCHES_LEN],
 //     adsr: ADSR,
-// }
-
-// struct FonSource {
-//     data: Audio<Ch16, 2>,
-//     pos: usize,
-//     last_channel: usize,
-// }
-
-// impl Iterator for FonSource {
-//     type Item = rodio::Sample;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         let frame = self.data.get(self.pos)?;
-//         let value = frame.channels()[self.last_channel];
-//         self.last_channel = (self.last_channel + 1) % 2;
-//         if self.last_channel == 0 {
-//             self.pos += 1;
-//         }
-//         Some(value.to_f32())
-//     }
-// }
-
-// impl rodio::Source for FonSource {
-//     fn current_span_len(&self) -> Option<usize> { None }
-//     fn channels(&self) -> u16 { 1 }
-//     fn sample_rate(&self) -> u32 { 48_000 }
-//     fn total_duration(&self) -> Option<Duration> { None }
 // }
 
 fn save_to_wav(file: &str, audio: Audio<Ch32, 2>) {
@@ -252,35 +225,15 @@ fn main() {
     // Chcemy wyprodukować tablicę floatów
     // to będzie audio
 
-    let mut signal = chord_signal(&[220.0, 220.0 * 32.0 / 27.0, 220.0 * 3.0 / 2.0], &HARMONICS);
+    const PITCHES_LEN: usize = 3;
+    const BASE_PITCH: f32 = 220.0;
+    /// The three pitches in a perfectly tuned A3 minor chord
+    let pitches: [f32; PITCHES_LEN] = [note(BASE_PITCH, 0.0), note(BASE_PITCH, 3.0), note(BASE_PITCH, 7.0)];
+    let mut signal = chord_signal(&pitches, &HARMONICS);
 
-
-    // Initialize audi)
     let mut audio = Audio::<Ch32, 2>::with_silence(48_000, 48_000 * 1);
-    // Create audio processors
-    // let mut proc = Processors::default();
-    // Adjust phases of harmonics.
-    // for pitch in proc.piano.iter_mut() {
-    //     for harmonic in pitch.iter_mut() {
-    //         harmonic.shift(proc.white.step());
-    //     }
-    // }
-    // Build synthesis algorithm
-    // let mut synth = Synth::new(proc, |proc, mut frame: Frame<_, 2>| {
-    //     proc.adsr.step();
-    //     for (s, pitch) in proc.piano.iter_mut().zip(PITCHES.iter()) {
-    //         for ((i, o), v) in s.iter_mut().enumerate().zip(HARMONICS.iter()) {
-    //             // Get next sample from oscillator.
-    //             let sample = o.step(pitch * (i + 1) as f32);
-    //             let sample_vol = Gain.step(sample, (v * VOLUME).into());
-    //             let sample_adsr = proc.adsr.peek(sample_vol);
-    //             // Pan the generated harmonic center
-    //             frame = frame.pan(sample_adsr, 0.0);
-    //         }
-    //     }
-    //     frame
-    // });
 
+    const VOLUME: f32 = 1.0 / 10.0;
     for (i, frame) in audio.iter_mut().enumerate() {
         let t = i as f32 * SAMPLE_PERIOD;
         let mut sample = signal.sample(t);
