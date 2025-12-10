@@ -193,9 +193,11 @@ fn generate_melody(notes: &[(f32, f32)], bpm: u32) -> (Box<dyn Signal>, Box<dyn 
     }
 
     (
-        Box::new(StepSignal::new(freqs)),
+        Box::new(Sine::new(Box::new(StepSignal::new(freqs)))),
         Box::new(StepSignal::new(gates)),
     )
+}
+
 enum AdsrState {
     Idle,
     Attack,
@@ -323,7 +325,6 @@ fn main() {
     ]);
 
     let (freq_signal, gate_signal) = generate_melody(&notes, 120);
-    const BASE_PITCH: f32 = 220.0;
 
     // The three pitches in a perfectly tuned A3 minor chord
     let pitches: [f32; PITCHES_LEN] = [
@@ -332,11 +333,9 @@ fn main() {
         note(BASE_PITCH, 7.0),
     ];
 
-    let test = Test {};
-    let mut signal = chord_signal(&pitches, &HARMONICS);
-    let mut signal_adsr = Adsr::new(Box::new(test), signal);
+    let mut signal_adsr = Adsr::new(gate_signal, freq_signal);
 
-    let mut audio = Audio::<Ch32, 2>::with_silence(48_000, 48_000 * 2);
+    let mut audio = Audio::<Ch32, 2>::with_silence(48_000, 48_000 * 5);
 
     const VOLUME: f32 = 1.0 / 10.0;
     for (i, frame) in audio.iter_mut().enumerate() {
