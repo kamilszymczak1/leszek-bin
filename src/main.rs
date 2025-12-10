@@ -48,7 +48,11 @@ fn save_to_wav(file: &str, audio: Audio<Ch32, 2>) {
 
 trait Signal {
     fn sample(&mut self, t: f32) -> Ch32;
+
+    fn clone_box(&self) -> Box<dyn Signal>;
 }
+
+#[derive(Copy, Clone)]
 struct Const {
     value: f32,
 }
@@ -63,11 +67,19 @@ impl Signal for Const {
     fn sample(&mut self, _t: f32) -> Ch32 {
         Ch32::from(self.value)
     }
+
+    fn clone_box(&self) -> Box<dyn Signal> {
+        Box::new(*self)
+    }
 }
 
 impl Signal for f32 {
     fn sample(&mut self, _t: f32) -> Ch32 {
         Ch32::from(*self)
+    }
+
+    fn clone_box(&self) -> Box<dyn Signal> {
+        Box::new(*self)
     }
 }
 
@@ -97,6 +109,10 @@ impl Signal for Sine {
         self.state = (self.state + TAU * SAMPLE_PERIOD * self.freq.sample(t).to_f32()) % TAU;
         out.into()
     }
+
+    fn clone_box(&self) -> Box<dyn Signal> {
+        Box::new(Sine::new(self.freq.clone_box()))
+    }
 }
 
 struct Gain {
@@ -107,6 +123,13 @@ struct Gain {
 impl Signal for Gain {
     fn sample(&mut self, t: f32) -> Ch32 {
         Ch32::from(self.signal.sample(t).to_f32() * self.gain)
+    }
+
+    fn clone_box(&self) -> Box<dyn Signal> {
+        Box::new(Gain {
+            signal: self.signal.clone_box(),
+            gain: self.gain,
+        })
     }
 }
 
@@ -125,6 +148,13 @@ impl Signal for Sum {
     fn sample(&mut self, t: f32) -> Ch32 {
         self.a.sample(t) + self.b.sample(t)
     }
+
+   fn clone_box(&self) -> Box<dyn Signal> {
+       Box::new(Sum::new(
+           self.a.clone_box(),
+           self.b.clone_box(),
+       ))
+   }
 }
 
 fn play_note(base_freq: Const, harmonics: &[f32]) -> Box<dyn Signal> {
@@ -175,6 +205,14 @@ impl Signal for StepSignal {
             accumulated_time += *duration;
         }
         return Ch32::from(0.0);
+    }
+
+
+    fn clone_box(&self) -> Box<dyn Signal> {
+        let cloned_steps = self.steps.iter().map(|(sig, x)| {
+            (sig.clone_box(), *x)
+        }).collect::<Vec<_>>();
+        Box::new(StepSignal::new(cloned_steps))
     }
 }
 
@@ -303,17 +341,9 @@ impl Signal for Adsr {
         let input = self.input.sample(t);
         Ch32::from(self.value * input.to_f32())
     }
-}
 
-struct Test();
-
-impl Signal for Test {
-    fn sample(&mut self, t: f32) -> Ch32 {
-        if t < 0.2 {
-            Ch32::from(1.0)
-        } else {
-            Ch32::from(0.0)
-        }
+    fn clone_box(&self) -> Box<dyn Signal> {
+        Box::new(Adsr::new(self.gate.clone_box(), self.input.clone_box()))
     }
 }
 
