@@ -1,6 +1,6 @@
+use fon::Audio;
 use fon::chan::Ch32;
 use fon::chan::Channel;
-use fon::Audio;
 
 /// First ten harmonic volumes of a piano sample (sounds like electric piano).
 const HARMONICS: [f32; 10] = [
@@ -153,12 +153,12 @@ fn chord_signal(base_freqs: &[f32], harmonics: &[f32]) -> Box<dyn Signal> {
 }
 
 struct StepSignal {
-    steps: Vec<(f32, f32)>,
+    steps: Vec<(Box<dyn Signal>, f32)>,
     total_time: f32,
 }
 
 impl StepSignal {
-    fn new(steps: Vec<(f32, f32)>) -> Self {
+    fn new(steps: Vec<(Box<dyn Signal>, f32)>) -> Self {
         let total_time = steps.iter().map(|(_, dur)| *dur).sum();
         Self { steps, total_time }
     }
@@ -168,11 +168,11 @@ impl Signal for StepSignal {
     fn sample(&mut self, t: f32) -> Ch32 {
         let t = t % self.total_time;
         let mut accumulated_time = 0.0;
-        for (freq, duration) in &self.steps {
-            accumulated_time += *duration;
-            if t < accumulated_time {
-                return Ch32::from(*freq);
+        for (signal, duration) in &mut self.steps {
+            if t < accumulated_time + *duration {
+                return signal.sample(t - accumulated_time);
             }
+            accumulated_time += *duration;
         }
         return Ch32::from(0.0);
     }
@@ -192,10 +192,20 @@ fn generate_melody(notes: &[(f32, f32)], bpm: u32) -> (Box<dyn Signal>, Box<dyn 
         gates.push((0.0, silence_period * multiplier));
     }
 
-    (
-        Box::new(Sine::new(Box::new(StepSignal::new(freqs)))),
-        Box::new(StepSignal::new(gates)),
-    )
+    let freq_signal = Box::new(StepSignal::new(
+        freqs
+            .into_iter()
+            .map(|(f, d)| (play_note(Const::new(f), &HARMONICS), d))
+            .collect(),
+    ));
+    let gate_signal = Box::new(StepSignal::new(
+        gates
+            .into_iter()
+            .map(|(g, d)| (Box::new(Const::new(g)) as Box<dyn Signal>, d))
+            .collect(),
+    ));
+
+    (freq_signal, gate_signal)
 }
 
 enum AdsrState {
@@ -255,7 +265,9 @@ impl Signal for Adsr {
         self.gate_last = gate;
 
         match self.state {
-            AdsrState::Idle => { self.beg_value = 0.0; }
+            AdsrState::Idle => {
+                self.beg_value = 0.0;
+            }
 
             AdsrState::Attack => {
                 let step = self.peak_level / (self.attack * SAMPLE_RATE).max(1.0);
@@ -315,6 +327,7 @@ fn main() {
     let F: f32 = note(C, 5.0);
     let G: f32 = note(C, 7.0);
     let A: f32 = note(C, 9.0);
+    let B0 = note(C, -1.0);
 
     let notes = Vec::from([
         (E, 0.25 * 1.5),
@@ -322,22 +335,17 @@ fn main() {
         (G, 0.125 * 1.5),
         (E, 0.125 * 1.5),
         (D, 0.125),
+        (C, 0.5),
+        (B0, 0.5),
     ]);
 
-    let (freq_signal, gate_signal) = generate_melody(&notes, 120);
-
-    // The three pitches in a perfectly tuned A3 minor chord
-    let pitches: [f32; PITCHES_LEN] = [
-        note(BASE_PITCH, 0.0),
-        note(BASE_PITCH, 3.0),
-        note(BASE_PITCH, 7.0),
-    ];
+    let (freq_signal, gate_signal) = generate_melody(&notes, 30);
 
     let mut signal_adsr = Adsr::new(gate_signal, freq_signal);
 
     let mut audio = Audio::<Ch32, 2>::with_silence(48_000, 48_000 * 5);
 
-    const VOLUME: f32 = 1.0 / 10.0;
+    const VOLUME: f32 = 3.0 / 10.0;
     for (i, frame) in audio.iter_mut().enumerate() {
         let t = i as f32 * SAMPLE_PERIOD;
         let mut sample = signal_adsr.sample(t);
