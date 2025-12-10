@@ -10,11 +10,11 @@ const HARMONICS: [f32; 10] = [
 const TAU: f32 = 6.283_185_5;
 const SAMPLE_PERIOD: f32 = 1.0 / 48_000.0;
 
-const HALF_STEP: f32 = 1.059_463_1;
-
 fn note(base: f32, count: f32) -> f32 {
     base * HALF_STEP.powf(count)
 }
+
+const HALF_STEP: f32 = 1.059_463_1;
 
 // State of the synthesizer.
 // #[derive(Default)]
@@ -180,7 +180,7 @@ impl Signal for Sum {
     }
 }
 
-fn linear_combination_of_harmonics(base_freq: Const, harmonics: &[f32]) -> Box<dyn Signal> {
+fn play_note(base_freq: Const, harmonics: &[f32]) -> Box<dyn Signal> {
     harmonics.iter().enumerate().fold(
         Box::new(Const::new(0.0)) as Box<dyn Signal>,
         |acc, (i, &vol)| {
@@ -199,23 +199,78 @@ fn chord_signal(base_freqs: &[f32], harmonics: &[f32]) -> Box<dyn Signal> {
     base_freqs.iter().fold(
         Box::new(Const::new(0.0)) as Box<dyn Signal>,
         |acc, &base_freq| {
-            let signal = linear_combination_of_harmonics(Const::new(base_freq), harmonics);
+            let signal = play_note(Const::new(base_freq), harmonics);
             Box::new(Sum::new(acc, signal))
         },
     )
 }
 
+struct StepSignal {
+    steps: Vec<(f32, f32)>,
+    total_time: f32,
+}
+
+impl StepSignal {
+    fn new(steps: Vec<(f32, f32)>) -> Self {
+        let total_time = steps.iter().map(|(_, dur)| *dur).sum();
+        Self { steps, total_time }
+    }
+}
+
+impl Signal for StepSignal {
+    fn sample(&mut self, t: f32) -> Ch32 {
+        let t = t % self.total_time;
+        let mut accumulated_time = 0.0;
+        for (freq, duration) in &self.steps {
+            accumulated_time += *duration;
+            if t < accumulated_time {
+                return Ch32::from(*freq);
+            }
+        }
+        return Ch32::from(0.0);
+    }
+}
+
+fn generate_melody(notes: &[(f32, f32)], bpm: u32) -> (Box<dyn Signal>, Box<dyn Signal>) {
+    let mut freqs = Vec::new();
+    let mut gates = Vec::new();
+
+    let multiplier = 60.0 / bpm as f32;
+
+    let silence_period = 0.02;
+
+    for &(freq, dur) in notes {
+        freqs.push((freq, dur * multiplier));
+        gates.push((1.0, (dur - silence_period) * multiplier));
+        gates.push((0.0, silence_period * multiplier));
+    }
+
+    (
+        Box::new(StepSignal::new(freqs)),
+        Box::new(StepSignal::new(gates)),
+    )
+}
+
 fn main() {
     const PITCHES_LEN: usize = 3;
-    const BASE_PITCH: f32 = 220.0;
+    const BASE_PITCH: f32 = 130.8;
 
-    // The three pitches in a perfectly tuned A3 minor chord
-    let pitches: [f32; PITCHES_LEN] = [
-        note(BASE_PITCH, 0.0),
-        note(BASE_PITCH, 3.0),
-        note(BASE_PITCH, 7.0),
-    ];
-    let mut signal = chord_signal(&pitches, &HARMONICS);
+    let C: f32 = 261.63;
+    let D: f32 = note(C, 2.0);
+    let E: f32 = note(C, 4.0);
+    let F: f32 = note(C, 5.0);
+    let G: f32 = note(C, 7.0);
+    let A: f32 = note(C, 9.0);
+
+    let notes = Vec::from([
+        (E, 0.25 * 1.5),
+        (E, 0.125 * 1.5),
+        (G, 0.125 * 1.5),
+        (E, 0.125 * 1.5),
+        (D, 0.125),
+    ]);
+
+    let (freq_signal, gate_signal) = generate_melody(&notes, 120);
 
     let mut audio = Audio::<Ch32, 2>::with_silence(48_000, 48_000);
 
