@@ -1,5 +1,5 @@
 use fon::Audio;
-use fon::chan::Ch32;
+use fon::chan::{Ch16, Ch32};
 use fon::chan::Channel;
 
 /// First ten harmonic volumes of a piano sample (sounds like electric piano).
@@ -8,7 +8,7 @@ const HARMONICS: [f32; 10] = [
 ];
 
 const TAU: f32 = 6.283_185_5;
-const SAMPLE_RATE: f32 = 48_000.0;
+const SAMPLE_RATE: f32 = 44_100.0;
 const SAMPLE_PERIOD: f32 = 1.0 / SAMPLE_RATE;
 
 fn note(base: f32, count: f32) -> f32 {
@@ -278,7 +278,7 @@ impl Adsr {
             attack: 0.01,
             decay: 0.3,
             sustain_level: 0.5,
-            release: 1.0,
+            release: 0.01,
             beg_value: 0.0,
             value: 0.0,
             gate_last: false,
@@ -347,6 +347,70 @@ impl Signal for Adsr {
     }
 }
 
+struct Sample {
+    gate: Box<dyn Signal>,
+    samples: Vec<Ch32>,
+    index: usize,
+}
+
+impl Sample {
+    fn new(file: &str, gate: Box<dyn Signal>) -> Self {
+        let mut reader = hound::WavReader::open(file).unwrap();
+        Sample {
+            gate,
+            samples: reader.samples::<i16>().map(|x| Ch32::from(Ch16::new(x.unwrap()))).collect::<Vec<_>>(),
+            index: 0,
+        }
+    }
+}
+
+impl Signal for Sample {
+    fn sample(&mut self, t: f32) -> Ch32 {
+        let gate = self.gate.sample(t).to_f32();
+        if gate <= 0.0 {
+            self.index = 0;
+            Ch32::from(0.0)
+        } else {
+            if self.index < self.samples.len() {
+                let sample = self.samples[self.index];
+                self.index += 1;
+                sample
+            } else {
+                Ch32::from(0.0)
+            }
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn Signal> {
+        Box::new(Sample {
+            gate: self.gate.clone_box(),
+            samples: self.samples.clone(),
+            index: 0,
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Every {
+    period: f32,
+    duration: f32,
+}
+
+impl Signal for Every {
+    fn sample(&mut self, t: f32) -> Ch32 {
+        Ch32::new(if (t % self.period) < self.duration {
+            1.0
+        } else {
+            0.0
+        })
+    }
+
+    fn clone_box(&self) -> Box<dyn Signal> {
+        Box::new(*self)
+    }
+}
+
+
 fn main() {
     const PITCHES_LEN: usize = 3;
     const BASE_PITCH: f32 = 130.8;
@@ -360,28 +424,32 @@ fn main() {
     let B0 = note(C, -1.0);
 
     let notes = Vec::from([
-        (E, 0.25 * 1.5),
-        (E, 0.125 * 1.5),
-        (G, 0.125 * 1.5),
-        (E, 0.125 * 1.5),
-        (D, 0.125),
-        (C, 0.5),
-        (B0, 0.5),
+        (E, 1.5),
+        (E, 0.5),
+        (G, 0.5 * 1.5),
+        (E, 0.5 * 1.5),
+        (D, 0.5),
+        (C, 2.0),
+        (B0, 2.0),
     ]);
 
-    let (freq_signal, gate_signal) = generate_melody(&notes, 30);
 
-    let mut signal_adsr = Adsr::new(gate_signal, freq_signal);
+    let (freq_signal, gate_signal) = generate_melody(&notes, 120);
 
-    let mut audio = Audio::<Ch32, 2>::with_silence(48_000, 48_000 * 5);
+    let kick = Gain { 
+        signal: Box::new(Sample::new("samples/kick.wav", Box::new(Every { period: 0.5, duration: 0.3 }))),
+        gain: 1.0,
+    };
+    let mut signal_adsr = Sum::new(Box::new(Adsr::new(gate_signal, freq_signal)), kick.clone_box());
 
-    const VOLUME: f32 = 3.0 / 10.0;
+    let mut audio = Audio::<Ch32, 2>::with_silence(SAMPLE_RATE as u32, (SAMPLE_RATE as usize) * 5);
+
+    const VOLUME: f32 = 4.0 / 10.0;
     for (i, frame) in audio.iter_mut().enumerate() {
         let t = i as f32 * SAMPLE_PERIOD;
         let mut sample = signal_adsr.sample(t);
         sample = sample * VOLUME;
-        frame.channels_mut()[0] = sample;
-        frame.channels_mut()[1] = sample;
+        *frame = frame.pan(sample, 0.0);
     }
 
     let frame = audio.get(0).unwrap();
