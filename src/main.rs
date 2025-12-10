@@ -1,6 +1,6 @@
-use fon::Audio;
 use fon::chan::Ch32;
 use fon::chan::Channel;
+use fon::Audio;
 
 /// First ten harmonic volumes of a piano sample (sounds like electric piano).
 const HARMONICS: [f32; 10] = [
@@ -8,7 +8,8 @@ const HARMONICS: [f32; 10] = [
 ];
 
 const TAU: f32 = 6.283_185_5;
-const SAMPLE_PERIOD: f32 = 1.0 / 48_000.0;
+const SAMPLE_RATE: f32 = 48_000.0;
+const SAMPLE_PERIOD: f32 = 1.0 / SAMPLE_RATE;
 
 fn note(base: f32, count: f32) -> f32 {
     base * HALF_STEP.powf(count)
@@ -25,6 +26,9 @@ const HALF_STEP: f32 = 1.059_463_1;
 //     piano: [[Sine; 10]; PITCHES_LEN],
 //     adsr: ADSR,
 // }
+fn lerp(a: f32, b: f32, t0: f32, t1: f32, t: f32) -> f32 {
+    (t - t0) / (t1 - t0) * (b - a) + a
+}
 
 fn save_to_wav(file: &str, audio: Audio<Ch32, 2>) {
     let spec = hound::WavSpec {
@@ -41,63 +45,6 @@ fn save_to_wav(file: &str, audio: Audio<Ch32, 2>) {
         }
     }
 }
-
-struct ADSR {
-    attack: u32,
-    delay: u32,
-    sustain_level: f32,
-    sustain: u32,
-    release: u32,
-    t: u32,
-}
-
-// fn lerp(a: f32, b: f32, t0: f32, t1: f32, t: f32) -> f32 {
-//     (t - t0) / (t1 - t0) * (b - a) + a
-// }
-
-// impl Default for ADSR {
-//     fn default() -> Self {
-//         Self::new()
-//     }
-// }
-
-// impl ADSR {
-//     fn new() -> Self {
-//         ADSR {
-//             attack: 2000,
-//             delay: 5000,
-//             sustain_level: 0.7,
-//             sustain: 8000,
-//             release: 10000,
-//             t: 0
-//         }
-//     }
-
-//     fn peek(&self, input: Ch32) -> Ch32 {
-//         if self.t < self.attack {
-//             Ch32::from(input.to_f32() * lerp(0.0, 1.0, 0.0, self.attack as f32, self.t as f32))
-//         } else if self.t < self.attack  + self.delay {
-//             let t0 = self.attack as f32;
-//             let t1 = (self.attack + self.delay) as f32;
-//             Ch32::from(input.to_f32() * lerp(1.0, self.sustain_level, t0, t1, self.t as f32))
-//         } else if self.t < self.attack + self.delay + self.sustain {
-//             Ch32::from(input.to_f32() * self.sustain_level)
-//         } else if self.t < self.attack + self.delay + self.sustain + self.release {
-//             let t0 = (self.attack + self.delay + self.sustain) as f32;
-//             let t1 = (self.attack + self.delay + self.release + self.sustain) as f32;
-//             Ch32::from(input.to_f32() * lerp(self.sustain_level, 0.0, t0, t1, self.t as f32))
-//         } else {
-//             Ch32::from(0.0)
-//         }
-//     }
-
-//     fn step(&mut self) {
-//         self.t += 1;
-//         if self.t % 1000 == 0 {
-//             println!("{}", self.peek(Ch32::from(1.0)).to_f32())
-//         }
-//     }
-// }
 
 trait Signal {
     fn sample(&mut self, t: f32) -> Ch32;
@@ -249,6 +196,111 @@ fn generate_melody(notes: &[(f32, f32)], bpm: u32) -> (Box<dyn Signal>, Box<dyn 
         Box::new(StepSignal::new(freqs)),
         Box::new(StepSignal::new(gates)),
     )
+enum AdsrState {
+    Idle,
+    Attack,
+    Decay,
+    Sustain,
+    Release,
+}
+
+struct Adsr {
+    state: AdsrState,
+    gate: Box<dyn Signal>,
+    input: Box<dyn Signal>,
+    peak_level: f32,
+    attack: f32,
+    decay: f32,
+    sustain_level: f32,
+    release: f32,
+    beg_value: f32,
+    value: f32,
+    gate_last: bool,
+}
+
+impl Adsr {
+    fn new(gate: Box<dyn Signal>, input: Box<dyn Signal>) -> Self {
+        Adsr {
+            state: AdsrState::Idle,
+            gate,
+            input,
+            peak_level: 1.0,
+            attack: 0.01,
+            decay: 0.3,
+            sustain_level: 0.5,
+            release: 1.0,
+            beg_value: 0.0,
+            value: 0.0,
+            gate_last: false,
+        }
+    }
+}
+
+impl Signal for Adsr {
+    fn sample(&mut self, t: f32) -> Ch32 {
+        let gate = self.gate.sample(t).to_f32() > 0.0;
+        match (self.gate_last, gate) {
+            (false, true) => {
+                self.beg_value = self.value;
+                self.state = AdsrState::Attack;
+            }
+            (true, false) => {
+                self.beg_value = self.value;
+                self.state = AdsrState::Release;
+            }
+            _ => {}
+        }
+        self.gate_last = gate;
+
+        match self.state {
+            AdsrState::Idle => { self.beg_value = 0.0; }
+
+            AdsrState::Attack => {
+                let step = self.peak_level / (self.attack * SAMPLE_RATE).max(1.0);
+                self.value += step;
+                if self.value >= self.peak_level {
+                    self.value = self.peak_level;
+                    self.state = AdsrState::Decay;
+                }
+            }
+
+            AdsrState::Decay => {
+                let step =
+                    (self.peak_level - self.sustain_level) / (self.decay * SAMPLE_RATE).max(1.0);
+                self.value -= step;
+                if self.value <= self.sustain_level {
+                    self.value = self.sustain_level;
+                    self.state = AdsrState::Sustain;
+                }
+            }
+
+            AdsrState::Sustain => self.value = self.sustain_level,
+
+            AdsrState::Release => {
+                let step = self.beg_value / (self.release * SAMPLE_RATE).max(1.0);
+                self.value -= step;
+                if self.value <= 0.0 {
+                    self.value = 0.0;
+                    self.state = AdsrState::Idle;
+                }
+            }
+        }
+
+        let input = self.input.sample(t);
+        Ch32::from(self.value * input.to_f32())
+    }
+}
+
+struct Test();
+
+impl Signal for Test {
+    fn sample(&mut self, t: f32) -> Ch32 {
+        if t < 0.2 {
+            Ch32::from(1.0)
+        } else {
+            Ch32::from(0.0)
+        }
+    }
 }
 
 fn main() {
@@ -271,13 +323,25 @@ fn main() {
     ]);
 
     let (freq_signal, gate_signal) = generate_melody(&notes, 120);
+    const BASE_PITCH: f32 = 220.0;
 
-    let mut audio = Audio::<Ch32, 2>::with_silence(48_000, 48_000);
+    // The three pitches in a perfectly tuned A3 minor chord
+    let pitches: [f32; PITCHES_LEN] = [
+        note(BASE_PITCH, 0.0),
+        note(BASE_PITCH, 3.0),
+        note(BASE_PITCH, 7.0),
+    ];
+
+    let test = Test {};
+    let mut signal = chord_signal(&pitches, &HARMONICS);
+    let mut signal_adsr = Adsr::new(Box::new(test), signal);
+
+    let mut audio = Audio::<Ch32, 2>::with_silence(48_000, 48_000 * 2);
 
     const VOLUME: f32 = 1.0 / 10.0;
     for (i, frame) in audio.iter_mut().enumerate() {
         let t = i as f32 * SAMPLE_PERIOD;
-        let mut sample = signal.sample(t);
+        let mut sample = signal_adsr.sample(t);
         sample = sample * VOLUME;
         frame.channels_mut()[0] = sample;
         frame.channels_mut()[1] = sample;
