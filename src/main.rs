@@ -11,6 +11,8 @@ use signals::{Adsr, Const, Every, Gain, Sample, Sine, StepSignal, Sum};
 use signals::{SAMPLE_PERIOD, SAMPLE_RATE};
 use utils::save_to_wav;
 
+mod pattern;
+
 /// First ten harmonic volumes of a piano sample (sounds like electric piano).
 const HARMONICS: [f32; 10] = [
     0.700, 0.243, 0.229, 0.095, 0.139, 0.087, 0.288, 0.199, 0.124, 0.090,
