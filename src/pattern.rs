@@ -107,8 +107,8 @@ impl Div<BigRational> for Time {
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Segment {
-    start: Time,
-    end: Time,
+    pub start: Time,
+    pub end: Time,
 }
 
 impl Segment {
@@ -145,6 +145,10 @@ impl Segment {
 
         result
     }
+
+    pub fn duration(self) -> BigRational {
+        self.end.0 - self.start.0
+    }
 }
 
 impl std::fmt::Display for Segment {
@@ -161,8 +165,8 @@ impl std::fmt::Debug for Segment {
 
 #[derive(PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct Part {
-    part: Segment,
-    whole: Option<Segment>,
+    pub part: Segment,
+    pub whole: Option<Segment>,
 }
 
 impl Part {
@@ -187,9 +191,9 @@ impl std::fmt::Debug for Part {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-struct Event<T> {
-    part: Part,
-    value: T,
+pub struct Event<T> {
+    pub part: Part,
+    pub value: T,
 }
 
 impl<T> Event<T> {
@@ -213,10 +217,18 @@ impl<T> std::fmt::Debug for Event<T> where T: std::fmt::Debug {
     }
 }
 
-trait Pattern<T> where T: Sized {
+pub trait Pattern<T> where T: Sized {
     type Events: Iterator<Item = Event<T>>;
 
     fn query(&self, segment: Segment) -> Self::Events;
+
+    fn boxed(self) -> BoxPattern<T> 
+    where Self: Sized, Self: 'static, T: 'static {
+        let boxed_pattern: Box<dyn Pattern<T, Events = BoxEvents<T>>> = Box::new(move |segment| {
+            BoxEvents(Box::new(self.query(segment)))
+        });
+        BoxPattern(boxed_pattern)
+    }
 }
 
 fn display_pattern<T, P>(pattern: P) -> String
@@ -234,7 +246,7 @@ where
 
 
 
-fn cycled<T: Clone>(a: T) -> impl Pattern<T> {
+pub fn cycled<T: Clone>(a: T) -> impl Pattern<T> {
     move |segment: Segment| {
         let a = a.clone();
         segment.split_on_cycles().into_iter().map(move |cycle| {
@@ -255,7 +267,34 @@ where
     }
 }
 
-fn slowcat<T, I>(pats: I) -> impl Pattern<T>
+struct Rate<T, I> 
+where T: Pattern<I> {
+    pattern: T,
+    _marker: std::marker::PhantomData<I>,
+}
+
+pub struct BoxEvents<T>(Box<dyn Iterator<Item = Event<T>>>);
+
+impl<T> Iterator for BoxEvents<T> {
+    type Item = Event<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+}
+
+pub struct BoxPattern<T>(Box<dyn Pattern<T, Events = BoxEvents<T>>>);
+
+impl<T> Pattern<T> for BoxPattern<T>
+{
+    type Events = BoxEvents<T>;
+
+    fn query(&self, segment: Segment) -> Self::Events {
+        self.0.query(segment)
+    }
+}
+
+pub fn slowcat<T, I>(pats: I) -> impl Pattern<T>
 where 
     I: Iterator,
     I::Item: Pattern<T>

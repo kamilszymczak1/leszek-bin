@@ -3,6 +3,12 @@ mod signal;
 mod signals;
 mod utils;
 
+mod superdirt;
+mod pattern;
+
+use crate::pattern::Pattern;
+use crate::superdirt::{ControlMessage, run_server};
+
 use fon::Audio;
 use fon::chan::Ch32;
 use notes::{B3, C4, D4, E4, G4};
@@ -11,7 +17,6 @@ use signals::{Adsr, Const, Every, Gain, Sample, Sine, StepSignal, Sum};
 use signals::{SAMPLE_PERIOD, SAMPLE_RATE};
 use utils::save_to_wav;
 
-mod pattern;
 
 /// First ten harmonic volumes of a piano sample (sounds like electric piano).
 const HARMONICS: [f32; 10] = [
@@ -71,43 +76,10 @@ fn generate_melody(notes: &[(f32, f32)], bpm: u32) -> (Box<dyn Signal>, Box<dyn 
 }
 
 fn main() {
-    let notes = Vec::from([
-        (*E4, 1.5),
-        (*E4, 0.5),
-        (*G4, 0.5 * 1.5),
-        (*E4, 0.5 * 1.5),
-        (*D4, 0.5),
-        (*C4, 2.0),
-        (*B3, 2.0),
-    ]);
-
-    let (freq_signal, gate_signal) = generate_melody(&notes, 120);
-
-    let kick = Gain::new(
-        Box::new(Sample::new(
-            "samples/kick.wav",
-            Box::new(Every::new(0.5, 0.3)),
-        )),
-        3.0,
-    );
-    let mut signal_adsr = Sum::new(
-        Box::new(Adsr::new(gate_signal, freq_signal)),
-        kick.clone_box(),
-    );
-
-    let mut audio = Audio::<Ch32, 2>::with_silence(SAMPLE_RATE as u32, (SAMPLE_RATE as usize) * 5);
-
-    const VOLUME: f32 = 4.0 / 10.0;
-    for (i, frame) in audio.iter_mut().enumerate() {
-        let t = i as f32 * SAMPLE_PERIOD;
-        let mut sample = signal_adsr.sample(t);
-        sample = sample * VOLUME;
-        *frame = frame.pan(sample, 0.0);
-    }
-
-    let frame = audio.get(0).unwrap();
-
-    save_to_wav("audio.wav", audio);
-
-    println!("First frame: {:?}", frame);
+    let pat1 = pattern::slowcat([pattern::cycled(ControlMessage::sound("arpy")), pattern::cycled(ControlMessage::sound("sn"))].into_iter()).boxed();
+    let pat2 = pattern::cycled(ControlMessage::sound("bd")).boxed();
+    run_server(vec![
+        pat1,
+        pat2,
+    ].into_iter());
 }
