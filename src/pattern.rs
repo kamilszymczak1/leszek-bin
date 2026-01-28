@@ -3,7 +3,7 @@ use num::BigRational;
 use num::rational::Ratio;
 use num_traits::cast::ToPrimitive;
 
-use std::ops::{Add, Div, Mul};
+use std::ops::{Add, Div, Mul, Sub};
 use std::rc::Rc;
 
 pub fn frac(a: i64, b: i64) -> BigRational {
@@ -73,6 +73,14 @@ impl Add<Time> for Time {
     }
 }
 
+impl Sub<Time> for Time {
+    type Output = Time;
+
+    fn sub(self, rhs: Time) -> Self::Output {
+        Time(self.0 - rhs.0)
+    }
+}
+
 impl Mul<i64> for Time {
     type Output = Time;
 
@@ -109,6 +117,22 @@ impl Div<BigRational> for Time {
 pub struct Segment {
     pub start: Time,
     pub end: Time,
+}
+
+impl Add<Time> for Segment {
+    type Output = Segment;
+
+    fn add(self, rhs: Time) -> Self::Output {
+        Segment::new(self.start + rhs.clone(), self.end + rhs)
+    }
+}
+
+impl Sub<Time> for Segment {
+    type Output = Segment;
+
+    fn sub(self, rhs: Time) -> Self::Output {
+        Segment::new(self.start - rhs.clone(), self.end - rhs)
+    }
 }
 
 impl Segment {
@@ -303,8 +327,17 @@ where
     move |segment: Segment| {
         let patterns = patterns.clone();
         segment.split_on_cycles().into_iter().flat_map(move |cycle| {
-            let pattern = &patterns[cycle.start.cycle_index() as usize % patterns.len()];
-            pattern.query(cycle.clone())
+            let len = patterns.len();
+            // If this cycle's index is i, then we want to query pattern[i % len].
+            let index = cycle.start.cycle_index();
+            let pattern = &patterns[index as usize % len];
+            // We are querying this pattern index/len'th time, so that is the cycle we want to
+            // query.
+            let offset = Time::new(index as i64, 1) - Time::new((index as usize/len) as i64, 1);
+            pattern.query(cycle.clone() - offset.clone()).map(move |event| {
+                let off = offset.clone();
+                Event::new(Part::new(event.part.part + off.clone(), event.part.whole.map(|w| w + off)), event.value)
+            })
         })
     }
 }
@@ -378,7 +411,22 @@ mod tests {
              [2, 3) | 1\n\
              [3, 4) | 2\n\
              [4, 5) | 1\n"
-        )
+        );
+        
+        // Make sure the inner slowcat alternates, i.e that each pattern's time
+        // doesn't advance while they are not active.
+        // <0 <1 2>> = 0 1 0 2 0 1 ...
+        assert_eq!(
+            display_pattern(slowcat(vec![
+                    cycled(0).boxed(), 
+                    slowcat(vec![cycled(1), cycled(2)].into_iter()).boxed()
+            ].into_iter())),
+            "[0, 1) | 0\n\
+             [1, 2) | 1\n\
+             [2, 3) | 0\n\
+             [3, 4) | 2\n\
+             [4, 5) | 0\n"
+        );
     }
 
     #[test]
