@@ -3,7 +3,7 @@ use num::BigRational;
 use num::rational::Ratio;
 use num_traits::cast::ToPrimitive;
 
-use std::ops::Add;
+use std::ops::{Add, Div, Mul};
 use std::rc::Rc;
 
 pub fn frac(a: i64, b: i64) -> BigRational {
@@ -70,6 +70,38 @@ impl Add<Time> for Time {
 
     fn add(self, rhs: Time) -> Self::Output {
         Time(self.0 + rhs.0)
+    }
+}
+
+impl Mul<i64> for Time {
+    type Output = Time;
+
+    fn mul(self, rhs: i64) -> Self::Output {
+        Time(self.0 * frac(rhs, 1))
+    }
+}
+
+impl Mul<BigRational> for Time {
+    type Output = Time;
+
+    fn mul(self, rhs: BigRational) -> Self::Output {
+        Time(self.0 * rhs)
+    }
+}
+
+impl Div<i64> for Time {
+    type Output = Time;
+
+    fn div(self, rhs: i64) -> Self::Output {
+        Time(self.0 / frac(rhs, 1))
+    }
+}
+
+impl Div<BigRational> for Time {
+    type Output = Time;
+
+    fn div(self, rhs: BigRational) -> Self::Output {
+        Time(self.0 / rhs)
     }
 }
 
@@ -211,7 +243,7 @@ fn cycled<T: Clone>(a: T) -> impl Pattern<T> {
     }
 }
 
-impl<T, I, F> Pattern<T> for F 
+impl<T, I, F> Pattern<T> for F
 where
     F: Fn(Segment) -> I,
     I: Iterator<Item = Event<T>>
@@ -226,7 +258,7 @@ where
 fn slowcat<T, I>(pats: I) -> impl Pattern<T>
 where 
     I: Iterator,
-    I::Item: Pattern<T>,
+    I::Item: Pattern<T>
 {
     let patterns: Rc<[I::Item]>  = pats.collect();
     move |segment: Segment| {
@@ -238,9 +270,31 @@ where
     }
 }
 
+fn fastcat<T, I>(pats : I) -> impl Pattern<T>
+where
+    I: ExactSizeIterator,
+    I::Item: Pattern<T>
+{
+    let len = pats.len();
+    let slowcat = slowcat(pats);
+    move |segment: Segment| {
+        let extended_segment = Segment::new(
+            segment.start.clone() * BigRational::from(BigInt::from(len as i64)),
+            segment.end.clone() * BigRational::from(BigInt::from(len as i64)),
+        );
+        slowcat.query(extended_segment).map(move |event| {
+            let part = Segment::new(
+                event.part.part.start.clone() / BigRational::from(BigInt::from(len as i64)),
+                event.part.part.end.clone() / BigRational::from(BigInt::from(len as i64)),
+            );
+            Event::new(Part::new(part, event.part.whole.clone()), event.value)
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::pattern::{Time, Segment, cycled, Pattern, display_pattern, slowcat};
+    use crate::pattern::{Time, Segment, cycled, Pattern, display_pattern, slowcat, fastcat};
 
     #[test]
     fn test_time() {
@@ -285,6 +339,43 @@ mod tests {
              [2, 3) | 1\n\
              [3, 4) | 2\n\
              [4, 5) | 1\n"
+        )
+    }
+
+    #[test]
+    fn test_fastcat() {
+        println!("{}", display_pattern(fastcat(vec![cycled(1), cycled(2)].into_iter())));
+        assert_eq!(
+            display_pattern(fastcat(vec![cycled(1), cycled(2)].into_iter())),
+            "[0, 1/2) | 1\n\
+             [1/2, 1) | 2\n\
+             [1, 3/2) | 1\n\
+             [3/2, 2) | 2\n\
+             [2, 5/2) | 1\n\
+             [5/2, 3) | 2\n\
+             [3, 7/2) | 1\n\
+             [7/2, 4) | 2\n\
+             [4, 9/2) | 1\n\
+             [9/2, 5) | 2\n"
+        );
+
+        assert_eq!(
+            display_pattern(fastcat(vec![cycled(1), cycled(2), cycled(3)].into_iter())),
+            "[0, 1/3) | 1\n\
+             [1/3, 2/3) | 2\n\
+             [2/3, 1) | 3\n\
+             [1, 4/3) | 1\n\
+             [4/3, 5/3) | 2\n\
+             [5/3, 2) | 3\n\
+             [2, 7/3) | 1\n\
+             [7/3, 8/3) | 2\n\
+             [8/3, 3) | 3\n\
+             [3, 10/3) | 1\n\
+             [10/3, 11/3) | 2\n\
+             [11/3, 4) | 3\n\
+             [4, 13/3) | 1\n\
+             [13/3, 14/3) | 2\n\
+             [14/3, 5) | 3\n"
         )
     }
 }
