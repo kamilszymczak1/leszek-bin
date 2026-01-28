@@ -10,7 +10,7 @@ pub fn frac(a: i64, b: i64) -> BigRational {
     Ratio::new(BigInt::from(a), BigInt::from(b))
 }
 
-#[derive(Eq, PartialEq, Debug, Clone, PartialOrd, Ord)]
+#[derive(Eq, PartialEq, Clone, PartialOrd, Ord)]
 pub struct Time(pub num::BigRational);
 
 impl Time {
@@ -33,6 +33,18 @@ impl Time {
 
     pub fn from_cycle_index(cycle: u32) -> Self {
         Time(BigRational::from(BigInt::from(cycle)))
+    }
+}
+
+impl std::fmt::Display for Time {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::fmt::Debug for Time {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Time({})", self.0)
     }
 }
 
@@ -61,7 +73,7 @@ impl Add<Time> for Time {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Segment {
     start: Time,
     end: Time,
@@ -103,7 +115,19 @@ impl Segment {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, PartialOrd, Ord, Debug)]
+impl std::fmt::Display for Segment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}, {})", self.start, self.end)
+    }
+}
+
+impl std::fmt::Debug for Segment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}, {})", self.start, self.end)
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct Part {
     part: Segment,
     whole: Option<Segment>,
@@ -118,7 +142,19 @@ impl Part {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl std::fmt::Display for Part {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.part)
+    }
+}
+
+impl std::fmt::Debug for Part {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.part)
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 struct Event<T> {
     part: Part,
     value: T,
@@ -133,11 +169,38 @@ impl<T> Event<T> {
     }
 }
 
+impl<T> std::fmt::Display for Event<T> where T: std::fmt::Display {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} | {}", self.part, self.value)
+    }
+}
+
+impl<T> std::fmt::Debug for Event<T> where T: std::fmt::Debug {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} | {:?}", self.part, self.value)
+    }
+}
+
 trait Pattern<T> where T: Sized {
     type Events: Iterator<Item = Event<T>>;
 
     fn query(&self, segment: Segment) -> Self::Events;
 }
+
+fn display_pattern<T, P>(pattern: P) -> String
+where
+    P: Pattern<T>,
+    T: std::fmt::Display,
+{
+    let mut result = String::new();
+    let segment = Segment::new(Time::new(0, 1), Time::new(5, 1));
+    for event in pattern.query(segment) {
+        result.push_str(&format!("{}\n", event));
+    }
+    result
+}
+
+
 
 fn cycled<T: Clone>(a: T) -> impl Pattern<T> {
     move |segment: Segment| {
@@ -177,7 +240,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::pattern::{Time, Segment, cycled, Pattern};
+    use crate::pattern::{Time, Segment, cycled, Pattern, display_pattern, slowcat};
 
     #[test]
     fn test_time() {
@@ -202,5 +265,26 @@ mod tests {
     fn test_cycled() {
         let res = cycled(0).query(Segment::new(Time::new(1, 2), Time::new(5, 2)));
         // TODO
+    }
+
+    #[test]
+    fn test_display_pattern_output() {
+        assert_eq!(
+            display_pattern(cycled(1)),
+            "[0, 1) | 1\n\
+             [1, 2) | 1\n\
+             [2, 3) | 1\n\
+             [3, 4) | 1\n\
+             [4, 5) | 1\n"
+        );
+
+        assert_eq!(
+            display_pattern(slowcat(vec![cycled(1), cycled(2)].into_iter())),
+            "[0, 1) | 1\n\
+             [1, 2) | 2\n\
+             [2, 3) | 1\n\
+             [3, 4) | 2\n\
+             [4, 5) | 1\n"
+        )
     }
 }
