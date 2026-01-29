@@ -5,6 +5,7 @@ mod utils;
 
 mod superdirt;
 mod pattern;
+mod lang;
 
 use crate::pattern::Pattern;
 use crate::superdirt::{ControlMessage, run_server};
@@ -15,7 +16,6 @@ use notes::{B3, C4, D4, E4, G4};
 use signal::Signal;
 use signals::{Adsr, Const, Every, Gain, Sample, Sine, StepSignal, Sum};
 use signals::{SAMPLE_PERIOD, SAMPLE_RATE};
-use utils::save_to_wav;
 
 
 /// First ten harmonic volumes of a piano sample (sounds like electric piano).
@@ -76,8 +76,13 @@ fn generate_melody(notes: &[(f32, f32)], bpm: u32) -> (Box<dyn Signal>, Box<dyn 
 }
 
 fn main() {
-    let pat1 = pattern::slowcat([pattern::cycled(ControlMessage::sound("arpy")), pattern::cycled(ControlMessage::sound("sn"))].into_iter()).boxed();
-    let pat2 = pattern::cycled(ControlMessage::sound("bd")).boxed();
+    fn s(name: &'static str) -> pattern::BoxPattern<ControlMessage> {
+        pattern::cycled(ControlMessage::sound(name)).boxed()
+    }
+    use pattern::{slowcat, fastcat, cycled};
+    println!("{}", pattern::display_pattern(&fastcat([cycled(0).boxed(), slowcat([cycled(1), cycled(2)].into_iter()).boxed()].into_iter()).boxed()));
+    let pat1 = fastcat([s("bd"), slowcat([s("sn"), s("hh")].into_iter()).boxed()].into_iter()).boxed();
+    let pat2 = pattern::cycled(ControlMessage::sound("arpy")).boxed();
     run_server(vec![
         pat1,
         pat2,

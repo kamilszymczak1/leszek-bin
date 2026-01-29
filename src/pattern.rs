@@ -3,10 +3,13 @@ use num::BigRational;
 use num::rational::Ratio;
 use num_traits::cast::ToPrimitive;
 use rand::Rng;
+use rosc::OscType;
 
 use std::cmp::{max, min};
 use std::ops::{Add, Div, Mul, Sub};
 use std::rc::Rc;
+
+use crate::superdirt::ControlMessage;
 
 pub fn frac(a: i64, b: i64) -> BigRational {
     Ratio::new(BigInt::from(a), BigInt::from(b))
@@ -49,7 +52,6 @@ impl std::fmt::Debug for Time {
         write!(f, "Time({})", self.0)
     }
 }
-
 
 impl Add<i64> for Time {
     type Output = Time;
@@ -284,14 +286,14 @@ pub trait Pattern<T> where T: Sized {
 
     fn boxed(self) -> BoxPattern<T> 
     where Self: Sized, Self: 'static, T: 'static {
-        let boxed_pattern: Box<dyn Pattern<T, Events = BoxEvents<T>>> = Box::new(move |segment| {
+        let boxed_pattern: Rc<dyn Pattern<T, Events = BoxEvents<T>>> = Rc::new(move |segment| {
             BoxEvents(Box::new(self.query(segment)))
         });
         BoxPattern(boxed_pattern)
     }
 }
 
-fn display_pattern<T, P>(pattern: P) -> String
+pub fn display_pattern<T, P>(pattern: &P) -> String
 where
     P: Pattern<T>,
     T: std::fmt::Display,
@@ -303,8 +305,6 @@ where
     }
     result
 }
-
-
 
 pub fn cycled<T: Clone>(a: T) -> impl Pattern<T> {
     move |segment: Segment| {
@@ -343,7 +343,8 @@ impl<T> Iterator for BoxEvents<T> {
     }
 }
 
-pub struct BoxPattern<T>(Box<dyn Pattern<T, Events = BoxEvents<T>>>);
+#[derive(Clone)]
+pub struct BoxPattern<T>(Rc<dyn Pattern<T, Events = BoxEvents<T>>>);
 
 impl<T> Pattern<T> for BoxPattern<T>
 {
@@ -427,6 +428,15 @@ where
     }
 }
 
+fn keyed(key: &'static str, values: impl Pattern<OscType>) -> impl Pattern<ControlMessage> {
+    move |segment| {
+        values.query(segment).map(move |event| {
+            Event::new(event.part, ControlMessage::new(vec![(String::from(key), event.value)]))
+        })
+    }
+}
+                
+
 pub fn in_parallel<T, I>(pats: I) -> impl Pattern<T>
 where
     I: Iterator,
@@ -503,7 +513,7 @@ mod tests {
     #[test]
     fn test_display_pattern_output() {
         assert_eq!(
-            display_pattern(cycled(1)),
+            display_pattern(&cycled(1)),
             "[0, 1) | 1\n\
              [1, 2) | 1\n\
              [2, 3) | 1\n\
@@ -512,7 +522,7 @@ mod tests {
         );
 
         assert_eq!(
-            display_pattern(slowcat(vec![cycled(1), cycled(2)].into_iter())),
+            display_pattern(&slowcat(vec![cycled(1), cycled(2)].into_iter())),
             "[0, 1) | 1\n\
              [1, 2) | 2\n\
              [2, 3) | 1\n\
@@ -524,7 +534,7 @@ mod tests {
         // doesn't advance while they are not active.
         // <0 <1 2>> = 0 1 0 2 0 1 ...
         assert_eq!(
-            display_pattern(slowcat(vec![
+            display_pattern(&slowcat(vec![
                     cycled(0).boxed(), 
                     slowcat(vec![cycled(1), cycled(2)].into_iter()).boxed()
             ].into_iter())),
@@ -538,9 +548,9 @@ mod tests {
 
     #[test]
     fn test_fastcat() {
-        println!("{}", display_pattern(fastcat(vec![cycled(1), cycled(2)].into_iter())));
+        println!("{}", display_pattern(&fastcat(vec![cycled(1), cycled(2)].into_iter())));
         assert_eq!(
-            display_pattern(fastcat(vec![cycled(1), cycled(2)].into_iter())),
+            display_pattern(&fastcat(vec![cycled(1), cycled(2)].into_iter())),
             "[0, 1/2) | 1\n\
              [1/2, 1) | 2\n\
              [1, 3/2) | 1\n\
@@ -554,7 +564,7 @@ mod tests {
         );
 
         assert_eq!(
-            display_pattern(fastcat(vec![cycled(1), cycled(2), cycled(3)].into_iter())),
+            display_pattern(&fastcat(vec![cycled(1), cycled(2), cycled(3)].into_iter())),
             "[0, 1/3) | 1\n\
              [1/3, 2/3) | 2\n\
              [2/3, 1) | 3\n\
@@ -577,7 +587,7 @@ mod tests {
     fn test_speed_up() {
         let pattern = speed_up(cycled(1), frac(2, 1));
         assert_eq!(
-            display_pattern(pattern),
+            display_pattern(&pattern),
             "[0, 1/2) | 1\n\
              [1/2, 1) | 1\n\
              [1, 3/2) | 1\n\
@@ -592,7 +602,7 @@ mod tests {
 
         let pattern = speed_up(slowcat(vec![cycled(1), cycled(2)].into_iter()), frac(2, 3));
         assert_eq!(
-            display_pattern(pattern),
+            display_pattern(&pattern),
             "[0, 3/2) | 1\n\
              [3/2, 3) | 2\n\
              [3, 9/2) | 1\n\
@@ -604,7 +614,7 @@ mod tests {
     fn test_in_parallel() {
         let pattern = in_parallel(vec![cycled(1), cycled(2)].into_iter());
         assert_eq!(
-            display_pattern(pattern),
+            display_pattern(&pattern),
             "[0, 1) | 1\n\
              [1, 2) | 1\n\
              [2, 3) | 1\n\
@@ -623,7 +633,7 @@ mod tests {
         ].into_iter());
 
         assert_eq!(
-            display_pattern(pattern),
+            display_pattern(&pattern),
             "[0, 3/2) | 1\n\
              [3/2, 3) | 1\n\
              [3, 9/2) | 1\n\
@@ -648,7 +658,7 @@ mod tests {
         );
 
         assert_eq!(
-            display_pattern(pattern),
+            display_pattern(&pattern),
             "[0, 1) | 11\n\
              [1, 2) | 11\n\
              [2, 3) | 11\n\
@@ -683,7 +693,7 @@ mod tests {
         );
 
         assert_eq!(
-            display_pattern(pattern_combined),
+            display_pattern(&pattern_combined),
             "[0, 1) | 3\n\
              [1, 3/2) | 6\n\
              [3/2, 2) | 8\n\
@@ -697,7 +707,7 @@ mod tests {
     #[test]
     fn test_random_slowcat() {
         let pattern = random_slowcat(vec![cycled(1), cycled(2)].into_iter());
-        let output = display_pattern(pattern);
+        let output = display_pattern(&pattern);
         // Since the output is random, we just check that it has the correct number of events.
         let lines: Vec<&str> = output.lines().collect();
         assert_eq!(lines.len(), 5);
