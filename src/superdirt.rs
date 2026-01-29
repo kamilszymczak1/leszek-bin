@@ -45,7 +45,7 @@ fn cycles_to_system_time(ctx: &ServerContext, time: Time) -> SystemTime {
     ctx.start_time + scale_duration(ctx, time.0)
 }
 
-const SUPERDIRT_ADDR: &'static str = "/dirt/play";
+const SUPERDIRT_ADDR: &str = "/dirt/play";
 
 fn encode_message(ctx: &ServerContext, message: Event<ControlMessage>) -> Option<OscPacket> {
     // FIXME: check no reserved fields were used

@@ -2,8 +2,8 @@ use std::sync::LazyLock;
 
 use anyhow::{Result, anyhow};
 use pest::Parser;
-use pest::iterators::{Pair, Pairs};
-use pest::pratt_parser::{Assoc, Op, PrattParser};
+use pest::iterators::Pairs;
+use pest::pratt_parser::{Assoc, PrattParser};
 
 use num::{BigRational, FromPrimitive};
 
