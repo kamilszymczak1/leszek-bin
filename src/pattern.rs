@@ -2,7 +2,9 @@ use num::{self, BigInt};
 use num::BigRational;
 use num::rational::Ratio;
 use num_traits::cast::ToPrimitive;
+use rand::Rng;
 
+use std::cmp::{max, min};
 use std::ops::{Add, Div, Mul, Sub};
 use std::rc::Rc;
 
@@ -173,6 +175,23 @@ impl Segment {
     pub fn duration(self) -> BigRational {
         self.end.0 - self.start.0
     }
+
+    pub fn scaled(self, factor: BigRational) -> Segment {
+        Segment::new(
+            Time(self.start.0 * factor.clone()),
+            Time(self.end.0 * factor),
+        )
+    }
+
+    pub fn intersection(&self, other: &Segment) -> Option<Segment> {
+        let start = max(self.start.clone(), other.start.clone());
+        let end = min(self.end.clone(), other.end.clone());
+        if start < end {
+            Some(Segment::new(start, end))
+        } else {
+            None
+        }
+    }
 }
 
 impl std::fmt::Display for Segment {
@@ -200,6 +219,13 @@ impl Part {
             whole,
         }
     }
+
+    fn scaled(self, factor: BigRational) -> Part {
+        Part::new(
+            self.part.scaled(factor.clone()),
+            self.whole.map(|w| w.scaled(factor))
+        )
+    }
 }
 
 impl std::fmt::Display for Part {
@@ -226,6 +252,16 @@ impl<T> Event<T> {
             part,
             value: a,
         }
+    }
+
+    fn scaled(self, factor: BigRational) -> Event<T>  {
+        Event::new(
+            Part::new(
+                self.part.part.scaled(factor.clone()),
+                self.part.whole.map(|w| w.scaled(factor.clone()))
+            ),
+            self.value
+        )
     }
 }
 
@@ -318,6 +354,24 @@ impl<T> Pattern<T> for BoxPattern<T>
     }
 }
 
+// Speed up a pattern by a given factor. E.g a factor of 2 makes the pattern run twice as fast.
+pub fn speed_up<T, P>(pattern: P, factor: BigRational) -> impl Pattern<T>
+where
+    P: Pattern<T>
+{
+    move |segment: Segment| {
+        let factor_inv = factor.recip();
+        let scaled_segment = segment.scaled(factor.clone());
+        pattern.query(scaled_segment).map(move |event| {
+            event.scaled(factor_inv.clone())
+        })
+    }
+}
+
+// Slowcat takes an iterator of patterns and alternates between them, giving each pattern
+// a full cycle before moving to the next pattern.
+// E.g slowcat([A, B]) produces <A | B | A | B | A | B ...>
+// slowcat([A, B, C]) produces <A | B | C | A | B | C ...>
 pub fn slowcat<T, I>(pats: I) -> impl Pattern<T>
 where 
     I: Iterator,
@@ -342,31 +396,84 @@ where
     }
 }
 
-fn fastcat<T, I>(pats : I) -> impl Pattern<T>
+// Fastcat takes an iterator of patterns and alternates between them, but speeds up time
+// so that each pattern gets an equal share of each cycle.
+// E.g fastcat([A, B]) produces <A B | A B | A B ...>
+// fastcat([A, B, C]) produces <A B C | A B C | A B C ...> 
+pub fn fastcat<T, I>(pats : I) -> impl Pattern<T>
 where
     I: ExactSizeIterator,
     I::Item: Pattern<T>
 {
     let len = pats.len();
-    let slowcat = slowcat(pats);
+    speed_up(slowcat(pats), frac(len as i64, 1))
+}
+
+pub fn random_slowcat<T, I>(pats: I) -> impl Pattern<T>
+where 
+    I: Iterator,
+    I::Item: Pattern<T>
+{
+    let patterns: Rc<[I::Item]>  = pats.collect();
     move |segment: Segment| {
-        let extended_segment = Segment::new(
-            segment.start.clone() * BigRational::from(BigInt::from(len as i64)),
-            segment.end.clone() * BigRational::from(BigInt::from(len as i64)),
-        );
-        slowcat.query(extended_segment).map(move |event| {
-            let part = Segment::new(
-                event.part.part.start.clone() / BigRational::from(BigInt::from(len as i64)),
-                event.part.part.end.clone() / BigRational::from(BigInt::from(len as i64)),
-            );
-            Event::new(Part::new(part, event.part.whole.clone()), event.value)
+        let patterns = patterns.clone();
+        segment.split_on_cycles().into_iter().flat_map(move |cycle| {
+            let mut rng = rand::rng();
+            let len = patterns.len();
+            let index = rng.random_range(0..len);
+            let pattern = &patterns[index];
+            pattern.query(cycle.clone())
         })
+    }
+}
+
+pub fn in_parallel<T, I>(pats: I) -> impl Pattern<T>
+where
+    I: Iterator,
+    I::Item: Pattern<T>,
+{
+    let patterns: Rc<[I::Item]>  = pats.collect();
+    move |segment: Segment| {
+        patterns.iter().flat_map(move |pattern| {
+            pattern.query(segment.clone())
+        }).collect::<Vec<_>>().into_iter()
+    }
+}
+
+pub fn combine<P, Q, T, R, S, F>(first : P, second : Q, f : F) -> impl Pattern<S>
+where
+    P: Pattern<T>,
+    Q : Pattern<R>,
+    T : Clone,
+    R : Clone,
+    F: Fn(T, R) -> S + Clone
+{
+    move |segment: Segment| {
+        let second_events: Vec<Event<R>> = second.query(segment.clone()).collect();
+
+        // Note: This is quadratic, can be optimized to linear if needed.
+        let mut results = Vec::new();
+        for fevent in first.query(segment.clone()) {
+            for sevent in &second_events {
+                if let Some(intersection) = fevent.part.part.intersection(&sevent.part.part) {
+                    let whole = match (&fevent.part.whole, &sevent.part.whole) {
+                        (Some(fw), Some(sw)) => fw.intersection(sw),
+                        _ => None,
+                    };
+                    results.push(Event::new(
+                        Part::new(intersection, whole),
+                        f(fevent.value.clone(), sevent.value.clone())
+                    ));
+                }
+            }
+        }
+        results.into_iter()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::pattern::{Time, Segment, cycled, Pattern, display_pattern, slowcat, fastcat};
+    use crate::pattern::{Pattern, Segment, Time, cycled, display_pattern, fastcat, frac, in_parallel, random_slowcat, slowcat, speed_up};
 
     #[test]
     fn test_time() {
@@ -464,5 +571,135 @@ mod tests {
              [13/3, 14/3) | 2\n\
              [14/3, 5) | 3\n"
         )
+    }
+
+    #[test]
+    fn test_speed_up() {
+        let pattern = speed_up(cycled(1), frac(2, 1));
+        assert_eq!(
+            display_pattern(pattern),
+            "[0, 1/2) | 1\n\
+             [1/2, 1) | 1\n\
+             [1, 3/2) | 1\n\
+             [3/2, 2) | 1\n\
+             [2, 5/2) | 1\n\
+             [5/2, 3) | 1\n\
+             [3, 7/2) | 1\n\
+             [7/2, 4) | 1\n\
+             [4, 9/2) | 1\n\
+             [9/2, 5) | 1\n"
+        );
+
+        let pattern = speed_up(slowcat(vec![cycled(1), cycled(2)].into_iter()), frac(2, 3));
+        assert_eq!(
+            display_pattern(pattern),
+            "[0, 3/2) | 1\n\
+             [3/2, 3) | 2\n\
+             [3, 9/2) | 1\n\
+             [9/2, 5) | 2\n"
+        );
+    }
+
+    #[test]
+    fn test_in_parallel() {
+        let pattern = in_parallel(vec![cycled(1), cycled(2)].into_iter());
+        assert_eq!(
+            display_pattern(pattern),
+            "[0, 1) | 1\n\
+             [1, 2) | 1\n\
+             [2, 3) | 1\n\
+             [3, 4) | 1\n\
+             [4, 5) | 1\n\
+             [0, 1) | 2\n\
+             [1, 2) | 2\n\
+             [2, 3) | 2\n\
+             [3, 4) | 2\n\
+             [4, 5) | 2\n"
+        );
+
+        let pattern = in_parallel(vec![
+            speed_up(cycled(1), frac(2, 3)),
+            speed_up(cycled(2), frac(3, 2))
+        ].into_iter());
+
+        assert_eq!(
+            display_pattern(pattern),
+            "[0, 3/2) | 1\n\
+             [3/2, 3) | 1\n\
+             [3, 9/2) | 1\n\
+             [9/2, 5) | 1\n\
+             [0, 2/3) | 2\n\
+             [2/3, 4/3) | 2\n\
+             [4/3, 2) | 2\n\
+             [2, 8/3) | 2\n\
+             [8/3, 10/3) | 2\n\
+             [10/3, 4) | 2\n\
+             [4, 14/3) | 2\n\
+             [14/3, 5) | 2\n"
+        )
+    }
+
+    #[test]
+    fn test_combine() {
+        let pattern = crate::pattern::combine(
+            cycled(1),
+            cycled(10),
+            |a, b| a + b
+        );
+
+        assert_eq!(
+            display_pattern(pattern),
+            "[0, 1) | 11\n\
+             [1, 2) | 11\n\
+             [2, 3) | 11\n\
+             [3, 4) | 11\n\
+             [4, 5) | 11\n"
+        );
+
+        let pattern1 = slowcat(vec![cycled(1), cycled(2)].into_iter());
+        let pattern2 = speed_up(fastcat(vec![cycled(3), cycled(4)].into_iter()), frac(1, 3));
+
+        // assert_eq!(
+        //     display_pattern(pattern1),
+        //     "[0, 1) | 1\n\
+        //      [1, 2) | 2\n\
+        //      [2, 3) | 1\n\
+        //      [3, 4) | 2\n\
+        //      [4, 5) | 1\n"
+        // );
+
+        // assert_eq!(
+        //     display_pattern(pattern2),
+        //     "[0, 3/2) | 3\n\
+        //      [3/2, 3) | 4\n\
+        //      [3, 9/2) | 3\n\
+        //      [9/2, 5) | 4\n"
+        // );
+
+        let pattern_combined = crate::pattern::combine(
+            pattern1,
+            pattern2,
+            |a, b| a * b
+        );
+
+        assert_eq!(
+            display_pattern(pattern_combined),
+            "[0, 1) | 3\n\
+             [1, 3/2) | 6\n\
+             [3/2, 2) | 8\n\
+             [2, 3) | 4\n\
+             [3, 4) | 6\n\
+             [4, 9/2) | 3\n\
+             [9/2, 5) | 4\n"
+        );
+    }
+    
+    #[test]
+    fn test_random_slowcat() {
+        let pattern = random_slowcat(vec![cycled(1), cycled(2)].into_iter());
+        let output = display_pattern(pattern);
+        // Since the output is random, we just check that it has the correct number of events.
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(lines.len(), 5);
     }
 }
