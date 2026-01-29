@@ -2,6 +2,8 @@ mod notes;
 mod signal;
 mod signals;
 mod utils;
+mod scale;
+mod note;
 
 mod superdirt;
 mod pattern;
