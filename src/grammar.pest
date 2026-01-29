@@ -3,5 +3,6 @@ dot = { "." }
 infix_op = _{
     dot
 }
-atom = _{ number | "(" ~ expr ~ ")" }
+identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+atom = _{ identifier | number | "(" ~ expr ~ ")" }
 expr = { atom ~ (infix_op ~ atom)* }

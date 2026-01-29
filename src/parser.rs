@@ -33,6 +33,9 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<Expr> {
                 Rule::number => {
                     // FIXME: parse rationals properly, instead of casting into f64 first
                     Ok(Expr::Number(BigRational::from_f64(primary.as_str().parse::<f64>().unwrap()).unwrap()))
+                },
+                Rule::identifier => {
+                    Ok(Expr::Var(primary.as_str().into()))
                 }
                 _ => Err(anyhow!("Unexpected primary: {:?}", primary)),
             }
@@ -48,6 +51,7 @@ mod test {
 
     #[test]
     fn test_parse() {
-        assert_eq!(parse("2.5").unwrap(), Expr::Number(frac(5, 2)))
+        assert_eq!(parse("2.5").unwrap(), Expr::Number(frac(5, 2)));
+        assert_eq!(parse("a").unwrap(), Expr::Var(String::from("a")));
     }
 }
