@@ -5,8 +5,8 @@ use num::BigRational;
 use crate::pattern;
 use crate::{pattern::{BoxPattern, Pattern, slowcat}, superdirt::ControlMessage};
 
-#[derive(Clone, Debug)]
-enum Expr {
+#[derive(Clone, Debug, PartialEq)]
+pub enum Expr {
     Lambda(String, Box<Expr>),
     Apply(Box<Expr>, Box<Expr>),
     Atom(String),

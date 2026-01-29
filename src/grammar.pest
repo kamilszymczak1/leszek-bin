@@ -1,0 +1,7 @@
+number = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT*)? }
+dot = { "." }
+infix_op = _{
+    dot
+}
+atom = _{ number | "(" ~ expr ~ ")" }
+expr = { atom ~ (infix_op ~ atom)* }

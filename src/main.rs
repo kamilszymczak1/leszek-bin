@@ -6,16 +6,17 @@ mod utils;
 mod superdirt;
 mod pattern;
 mod lang;
+mod parser;
 
 use crate::pattern::Pattern;
 use crate::superdirt::{ControlMessage, run_server};
 
-use fon::Audio;
-use fon::chan::Ch32;
-use notes::{B3, C4, D4, E4, G4};
+// use fon::Audio;
+// use fon::chan::Ch32;
+// use notes::{B3, C4, D4, E4, G4};
 use signal::Signal;
-use signals::{Adsr, Const, Every, Gain, Sample, Sine, StepSignal, Sum};
-use signals::{SAMPLE_PERIOD, SAMPLE_RATE};
+use signals::{Const, Gain, Sine, StepSignal, Sum};
+// use signals::{SAMPLE_PERIOD, SAMPLE_RATE};
 
 
 /// First ten harmonic volumes of a piano sample (sounds like electric piano).
