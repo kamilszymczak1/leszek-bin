@@ -1,5 +1,5 @@
 use std::thread;
-use std::time::{self, Duration, SystemTime};
+use std::time::{Duration, SystemTime};
 use num::BigRational;
 use num_traits::cast::ToPrimitive;
 

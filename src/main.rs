@@ -81,7 +81,10 @@ fn main() {
         pattern::cycled(ControlMessage::sound(name)).boxed()
     }
     use pattern::{slowcat, fastcat, cycled};
+
     println!("{}", pattern::display_pattern(&fastcat([cycled(0).boxed(), slowcat([cycled(1), cycled(2)].into_iter()).boxed()].into_iter()).boxed()));
+    println!("{}", pattern::display_pattern(&fastcat([cycled(0).boxed(), slowcat([cycled(1), cycled(2)].into_iter()).boxed()].into_iter()).boxed()));
+    println!("{}", pattern::display_pattern(&lang::eval_pattern(parser::parse("cat([1, 2])").unwrap()).unwrap()));
     let pat1 = fastcat([s("bd"), slowcat([s("sn"), s("hh")].into_iter()).boxed()].into_iter()).boxed();
     let pat2 = pattern::cycled(ControlMessage::sound("arpy")).boxed();
     run_server(vec![

@@ -29,7 +29,7 @@ pub fn atom(str: &str) -> Expr {
 }
 
 #[derive(Clone)]
-enum Value {
+pub enum Value {
     Lambda(String, Expr),
     Atom(String),
     Number(BigRational),
@@ -77,15 +77,26 @@ fn to_pattern(value: Value) -> BoxPattern<Value> {
     }
 }
 
-fn compute_external(name: String, args: Vec<Value>) -> Option<Value> {
+fn compute_external(name: String, mut args: Vec<Value>) -> Option<Value> {
+    let mut arg1 = move || -> Option<Value> {
+        if args.len() == 1 {
+            Some(args.pop().unwrap())
+        } else {
+            None
+        }
+    };
+
+    fn get_vector(val: Value) -> Option<Vec<Value>> {
+        if let Value::Vector(vec) = val {
+            Some(vec)
+        } else {
+            None
+        }
+    }
+
     match &name as &str {
         "slowcat" => {
-            if args.len() == 1 &&
-                let Value::Vector(pats) = args[0].clone() {
-                Some(Value::Pattern(slowcat(pats.into_iter().map(to_pattern)).boxed()))
-            } else {
-                None
-            }
+            Some(Value::Pattern(slowcat(get_vector(arg1()?)?.into_iter().map(to_pattern)).boxed()))
         },
         _ => { todo!() }
     }
@@ -120,28 +131,36 @@ impl Environment {
     }
 }
 
-fn eval(env: &mut Environment, expr: Expr) -> Option<Value> {
-    dbg!(env.clone(), expr.clone());
+pub fn eval_pattern(expr: Expr) -> Option<BoxPattern<Value>> {
+    let value = eval_with(&mut Environment::new(), expr)?;
+    if let Value::Pattern(pat) = value {
+        return Some(pat)
+    }
+
+    None
+}
+
+fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
     match expr {
         Expr::External(name, args) => {
             let arg_values: Vec<Value> = 
                 args
                 .into_iter()
-                .map(|e| eval(env, e))
+                .map(|e| eval_with(env, e))
                 .collect::<Option<Vec<_>>>()?;
 
             compute_external(name, arg_values)
         },
         Expr::Apply(f, arg) => {
             let (name, subexpr) =
-                match eval(env, *f)? {
+                match eval_with(env, *f)? {
                     Value::Lambda(name, subexpr) => { Some((name, subexpr)) },
                     _ => None,
                 }?;
             let old_value = env.variable_map.remove(&name);
-            let arg_value = eval(env, *arg)?;
+            let arg_value = eval_with(env, *arg)?;
             env.variable_map.insert(name.clone(), arg_value);
-            let result = eval(env, subexpr)?;
+            let result = eval_with(env, subexpr)?;
             if let Some(old_value) = old_value {
                 env.variable_map.insert(name, old_value);
             }
@@ -157,11 +176,13 @@ fn eval(env: &mut Environment, expr: Expr) -> Option<Value> {
             Some(Value::Atom(atom))
         },
         Expr::Vector(elements) => {
-            Some(Value::Vector(elements.into_iter().map(|expr| eval(env, expr)).collect::<Option<_>>()?))
+            Some(Value::Vector(elements.into_iter().map(|expr| eval_with(env, expr)).collect::<Option<_>>()?))
         }
         Expr::Var(name) => {
             match &name as &str {
                 "slowcat" => { Some(wrap_f1(String::from("slowcat"))) },
+                "cat" => { Some(wrap_f1(String::from("slowcat"))) },
+                "fc" => { Some(wrap_f1(String::from("fastcat"))) },
                 _ => { env.variable_map.get(&name).cloned() }
             }
         }
@@ -175,7 +196,7 @@ mod tests {
 
     #[test]
     fn test_eval() {
-        let val = eval(&mut Environment::new(), 
+        let val = eval_with(&mut Environment::new(), 
             Expr::Apply(
                 Box::new(Expr::Var(String::from("slowcat"))),
                 Box::new(Expr::Vector(vec![
