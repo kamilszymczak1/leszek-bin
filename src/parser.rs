@@ -34,12 +34,23 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<Expr> {
                     // FIXME: parse rationals properly, instead of casting into f64 first
                     Ok(Expr::Number(BigRational::from_f64(primary.as_str().parse::<f64>().unwrap()).unwrap()))
                 },
+                Rule::string => {
+                    let s = primary.as_str();
+                    Ok(Expr::Atom(s[1..s.len() - 1].to_string()))
+                },
                 Rule::identifier => {
                     Ok(Expr::Var(primary.as_str().into()))
-                }
+                },
                 Rule::call => {
                     parse_call(primary.into_inner())
-                }
+                },
+                Rule::vector => {
+                    let vec = primary.into_inner()
+                        .map(|pair| parse_expr(pair.into_inner()))
+                        .collect::<Result<_>>()?;
+
+                    Ok(Expr::Vector(vec))
+                },
                 _ => Err(anyhow!("Unexpected primary: {:?}", primary)),
             }
         })
@@ -83,5 +94,21 @@ mod test {
                 Box::new(Expr::Number(frac(2, 1)))
             )
         );
+        assert_eq!(
+            parse("[[1, 2], test(3)]").unwrap(),
+            Expr::Vector(vec![
+                Expr::Vector(vec![
+                    Expr::Number(frac(1, 1)),
+                    Expr::Number(frac(2, 1)),
+                ]),
+                apply(var("test"), Expr::Number(frac(3, 1)))
+            ])
+        );
+        let test_string = "test 123_@";
+        let wrapped_string = format!("\"{}\"", test_string);
+        assert_eq!(
+            parse(&wrapped_string).unwrap(),
+            atom(test_string)
+        )
     }
 }

@@ -16,6 +16,18 @@ pub enum Expr {
     Var(String),
 }
 
+pub fn var(str: &str) -> Expr {
+    Expr::Var(String::from(str))
+}
+
+pub fn apply(f: Expr, arg: Expr) -> Expr {
+    Expr::Apply(Box::new(f), Box::new(arg))
+}
+
+pub fn atom(str: &str) -> Expr {
+    Expr::Atom(String::from(str))
+}
+
 #[derive(Clone)]
 enum Value {
     Lambda(String, Expr),
