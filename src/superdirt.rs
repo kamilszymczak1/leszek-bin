@@ -35,6 +35,10 @@ impl ControlMessage {
             fields: vec![(String::from("s"), sound.into())]
         }
     }
+
+    pub fn merge(&mut self, other: &mut ControlMessage) {
+        self.fields.append(&mut other.fields);
+    }
 }
 
 fn scale_duration(ctx: &ServerContext, duration_cycles: BigRational) -> Duration {
@@ -94,7 +98,7 @@ where
     I: Iterator,
     I::Item: Pattern<ControlMessage>,
 {
-    let cps = 1.5;
+    let cps = 1.0;
     let ctx = ServerContext::new(cps);
     let mut sent_until = Time::new(0, 1);
     let pats: Vec<I::Item> = patterns.collect();
@@ -109,6 +113,7 @@ where
             .iter()
             .flat_map(|pat| pat.query(seg.clone()))
             .filter_map(|msg| {
+                println!("{:?}", msg);
                 let encoded = encode_message(&ctx, msg);
                 encoded
             })

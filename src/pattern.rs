@@ -12,7 +12,7 @@ use std::cmp::{max, min};
 use std::ops::{Add, Div, Mul, Sub};
 use std::rc::Rc;
 
-use crate::superdirt::ControlMessage;
+use crate::superdirt::{self, ControlMessage};
 
 pub fn frac(a: i64, b: i64) -> BigRational {
     Ratio::new(BigInt::from(a), BigInt::from(b))
@@ -507,7 +507,15 @@ where
             Event::new(ev.part, f(ev.value))
         })
     }
- }
+}
+
+pub fn filter_map_output<T, U, F, P>(pat: P, f: F) -> impl Pattern<U>
+where
+    P: Pattern<T>,
+    F: Fn(T) -> Option<U> + Clone
+{ 
+    filter_output(map_output(pat, f))
+}
 
 pub fn scale<P>(pattern : P, scale : &Scale) -> impl Pattern<Note>
 where P : Pattern<Note>
@@ -519,6 +527,19 @@ where P : Pattern<Note>
         })
     }
 }
+
+pub fn merge<P0, P1>(pattern0: P0, pattern1: P1) -> impl Pattern<ControlMessage> 
+where 
+    P0: Pattern<ControlMessage>,
+    P1: Pattern<ControlMessage>,
+{
+    combine(pattern0, pattern1, |msg0, msg1| {
+        let mut msg = msg0.clone();
+        msg.merge(&mut msg1.clone());
+        msg
+    })
+}
+
 
 #[cfg(test)]
 mod tests {
