@@ -1,5 +1,5 @@
 use std::thread;
-use std::time::{self, Duration, SystemTime};
+use std::time::{Duration, SystemTime};
 use num::BigRational;
 use num_traits::cast::ToPrimitive;
 
@@ -20,12 +20,16 @@ impl ServerContext {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ControlMessage {
     fields: Vec<(String, OscType)>
 }
 
 impl ControlMessage {
+    pub fn new(fields: Vec<(String, OscType)>) -> Self {
+        Self { fields }
+    }
+
     pub fn sound(sound: &str) -> ControlMessage {
         ControlMessage {
             fields: vec![(String::from("s"), sound.into())]
@@ -49,7 +53,9 @@ fn encode_message(ctx: &ServerContext, message: Event<ControlMessage>) -> Option
 
     let part = message.part;
     let fields = message.value.fields;
-    if let Some(whole) = part.whole && whole.start == part.part.start {
+    println!("{:?}", part.whole.clone());
+    println!("{:?}", part.part.clone());
+    if let Some(whole) = part.whole && whole.start >= part.part.start {
         let start = whole.clone().start;
         let time = cycles_to_system_time(ctx, start.clone());
         let delta: f32 = scale_duration(ctx, whole.duration()).as_secs_f32();
@@ -88,7 +94,7 @@ where
     I: Iterator,
     I::Item: Pattern<ControlMessage>,
 {
-    let cps = 1.0;
+    let cps = 1.5;
     let ctx = ServerContext::new(cps);
     let mut sent_until = Time::new(0, 1);
     let pats: Vec<I::Item> = patterns.collect();
@@ -102,7 +108,10 @@ where
         pats
             .iter()
             .flat_map(|pat| pat.query(seg.clone()))
-            .flat_map(|msg| encode_message(&ctx, msg))
+            .filter_map(|msg| {
+                let encoded = encode_message(&ctx, msg);
+                encoded
+            })
             .for_each(|packet| {
                 bytes.clear();
                 rosc::encoder::encode_into(&packet, &mut bytes).unwrap();

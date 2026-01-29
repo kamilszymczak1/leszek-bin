@@ -1,0 +1,16 @@
+WHITESPACE = _{ " " | "\t" | "\n" }
+number = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT*)? }
+dot = { "." }
+infix_op = _{
+    dot
+}
+
+string = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+vector = { "[" ~ (expr ~ ("," ~ expr)*)? ~ "]" }
+identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+call = { identifier ~ "(" ~ expr ~ ( "," ~ expr )* ~ ")"  }
+atom = _{ call | identifier ~ !("(") | number | "(" ~ expr ~ ")" | vector | string }
+
+expr = { 
+    atom ~ (infix_op ~ atom)*
+}
