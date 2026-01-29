@@ -1,6 +1,5 @@
 mod note;
 mod scale;
-mod utils;
 
 mod superdirt;
 mod pattern;
