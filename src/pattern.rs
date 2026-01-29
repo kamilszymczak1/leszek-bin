@@ -431,7 +431,7 @@ where
     }
 }
 
-fn keyed(key: &'static str, values: impl Pattern<OscType>) -> impl Pattern<ControlMessage> {
+pub fn keyed(key: &'static str, values: impl Pattern<OscType>) -> impl Pattern<ControlMessage> {
     move |segment| {
         values.query(segment).map(move |event| {
             Event::new(event.part, ControlMessage::new(vec![(String::from(key), event.value)]))
@@ -483,6 +483,31 @@ where
         results.into_iter()
     }
 }
+
+pub fn filter_output<T>(pat: impl Pattern<Option<T>>) -> impl Pattern<T> { 
+    move |segment: Segment| {
+        pat.query(segment).map(|ev| {
+            if let Some(val) = ev.value {
+                Some(Event::new(ev.part, val))
+            } else {
+                None
+            }
+        }).flatten()
+    }
+}
+
+pub fn map_output<T, U, F, P>(pat: P, f: F) -> impl Pattern<U>
+where
+    P: Pattern<T>,
+    F: Fn(T) -> U + Clone
+{ 
+    move |segment: Segment| {
+        let f = f.clone();
+        pat.query(segment).map(move |ev| {
+            Event::new(ev.part, f(ev.value))
+        })
+    }
+ }
 
 pub fn scale<P>(pattern : P, scale : &Scale) -> impl Pattern<Note>
 where P : Pattern<Note>

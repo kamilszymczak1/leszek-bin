@@ -2,8 +2,11 @@ use std::collections::HashMap;
 
 use num::BigRational;
 
+use rosc::OscType;
+
 use crate::pattern;
-use crate::{pattern::{BoxPattern, Pattern, slowcat}, superdirt::ControlMessage};
+use crate::pattern::{BoxPattern, Pattern, slowcat, map_output, filter_output};
+use crate::superdirt::ControlMessage;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -77,6 +80,38 @@ fn to_pattern(value: Value) -> BoxPattern<Value> {
     }
 }
 
+fn get_vector(val: Value) -> Option<Vec<Value>> {
+    if let Value::Vector(vec) = val {
+        Some(vec)
+    } else {
+        None
+    }
+}
+
+fn as_pattern(val: Value) -> Option<BoxPattern<Value>> {
+    if let Value::Pattern(pat) = val {
+        Some(pat)
+    } else {
+        None
+    }
+}
+
+fn as_atom(val: Value) -> Option<String> {
+    if let Value::Atom(str) = val {
+        Some(str)
+    } else {
+        None
+    }
+}
+
+fn as_control(val: Value) -> Option<ControlMessage> {
+    if let Value::Message(msg) = val {
+        Some(msg)
+    } else {
+        None
+    }
+}
+
 fn compute_external(name: String, mut args: Vec<Value>) -> Option<Value> {
     let mut arg1 = move || -> Option<Value> {
         if args.len() == 1 {
@@ -86,18 +121,16 @@ fn compute_external(name: String, mut args: Vec<Value>) -> Option<Value> {
         }
     };
 
-    fn get_vector(val: Value) -> Option<Vec<Value>> {
-        if let Value::Vector(vec) = val {
-            Some(vec)
-        } else {
-            None
-        }
-    }
-
     match &name as &str {
         "slowcat" => {
             Some(Value::Pattern(slowcat(get_vector(arg1()?)?.into_iter().map(to_pattern)).boxed()))
         },
+        "sound" => {
+            let pat = as_pattern(arg1()?)?;
+            let sound_pat = filter_output(map_output(pat, |val: Value| -> Option<OscType> { Some(OscType::String(as_atom(val)?)) }));
+            let output_pat = map_output(pattern::keyed("s", sound_pat), Value::Message).boxed();
+            Some(Value::Pattern(output_pat))
+        }
         _ => { todo!() }
     }
 }
@@ -129,6 +162,10 @@ impl Environment {
     fn new() -> Self {
         Self { variable_map: HashMap::new() }
     }
+}
+
+pub fn eval_control_pattern(expr: Expr) -> Option<BoxPattern<ControlMessage>> {
+    Some(filter_output(map_output(eval_pattern(expr)?, as_control)).boxed())
 }
 
 pub fn eval_pattern(expr: Expr) -> Option<BoxPattern<Value>> {
@@ -183,6 +220,7 @@ fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
                 "slowcat" => { Some(wrap_f1(String::from("slowcat"))) },
                 "cat" => { Some(wrap_f1(String::from("slowcat"))) },
                 "fc" => { Some(wrap_f1(String::from("fastcat"))) },
+                "s" => { Some(wrap_f1(String::from("sound"))) },
                 _ => { env.variable_map.get(&name).cloned() }
             }
         }
