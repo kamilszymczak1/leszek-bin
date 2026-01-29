@@ -8,16 +8,11 @@ mod pattern;
 mod lang;
 mod parser;
 
-use crate::pattern::Pattern;
+use crate::pattern::{Pattern, slowcat, cycled, fastcat};
 use crate::superdirt::{ControlMessage, run_server};
 
-// use fon::Audio;
-// use fon::chan::Ch32;
-// use notes::{B3, C4, D4, E4, G4};
 use signal::Signal;
 use signals::{Const, Gain, Sine, StepSignal, Sum};
-// use signals::{SAMPLE_PERIOD, SAMPLE_RATE};
-
 
 /// First ten harmonic volumes of a piano sample (sounds like electric piano).
 const HARMONICS: [f32; 10] = [
@@ -80,9 +75,7 @@ fn main() {
     fn s(name: &'static str) -> pattern::BoxPattern<ControlMessage> {
         pattern::cycled(ControlMessage::sound(name)).boxed()
     }
-    use pattern::{slowcat, fastcat, cycled};
 
-    println!("{}", pattern::display_pattern(&fastcat([cycled(0).boxed(), slowcat([cycled(1), cycled(2)].into_iter()).boxed()].into_iter()).boxed()));
     println!("{}", pattern::display_pattern(&fastcat([cycled(0).boxed(), slowcat([cycled(1), cycled(2)].into_iter()).boxed()].into_iter()).boxed()));
     println!("{}", pattern::display_pattern(&lang::eval_pattern(parser::parse("cat([1, 2])").unwrap()).unwrap()));
     let pat1 = fastcat([s("bd"), slowcat([s("sn"), s("hh")].into_iter()).boxed()].into_iter()).boxed();

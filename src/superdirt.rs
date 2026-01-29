@@ -109,13 +109,10 @@ where
             .iter()
             .flat_map(|pat| pat.query(seg.clone()))
             .filter_map(|msg| {
-                println!("{:?}", msg);
                 let encoded = encode_message(&ctx, msg);
-                println!("{:?}", encoded);
                 encoded
             })
             .for_each(|packet| {
-                println!("{:?}", packet);
                 bytes.clear();
                 rosc::encoder::encode_into(&packet, &mut bytes).unwrap();
                 if bytes.len() > 0 {
@@ -127,7 +124,6 @@ where
         let sleep_until = cycles_to_system_time(&ctx, sent_until.clone()) - SEND_BEFORE;
         // TODO: instead of unwrapping dont sleep and log?
         let sleep_duration = sleep_until.duration_since(SystemTime::now()).unwrap();
-        println!("{:?}", sleep_duration);
         thread::sleep(sleep_duration);
     }
 }
