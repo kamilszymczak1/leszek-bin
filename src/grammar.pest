@@ -1,8 +1,13 @@
+WHITESPACE = _{ " " | "\t" | "\n" }
 number = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT*)? }
 dot = { "." }
 infix_op = _{
     dot
 }
 identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
-atom = _{ identifier | number | "(" ~ expr ~ ")" }
-expr = { atom ~ (infix_op ~ atom)* }
+call = { identifier ~ "(" ~ expr ~ ( "," ~ expr )* ~ ")"  }
+atom = _{ call | identifier ~ !("(") | number | "(" ~ expr ~ ")" }
+
+expr = { 
+    atom ~ (infix_op ~ atom)*
+}

@@ -37,10 +37,30 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<Expr> {
                 Rule::identifier => {
                     Ok(Expr::Var(primary.as_str().into()))
                 }
+                Rule::call => {
+                    parse_call(primary.into_inner())
+                }
                 _ => Err(anyhow!("Unexpected primary: {:?}", primary)),
             }
         })
         .parse(pairs)
+}
+
+fn parse_call(mut pairs: Pairs<Rule>) -> Result<Expr> {
+    let name = pairs.next().unwrap().as_str();
+
+    let mut args: Vec<Expr> = vec![];
+    for arg in pairs {
+        args.push(parse_expr(arg.into_inner())?);
+    }
+
+    args.reverse();
+    let mut result_expr = Expr::Var(String::from(name));
+    while !args.is_empty() {
+        result_expr = Expr::Apply(Box::new(result_expr), Box::new(args.pop().unwrap()));
+    }
+
+    Ok(result_expr)
 }
 
 #[cfg(test)]
@@ -53,5 +73,15 @@ mod test {
     fn test_parse() {
         assert_eq!(parse("2.5").unwrap(), Expr::Number(frac(5, 2)));
         assert_eq!(parse("a").unwrap(), Expr::Var(String::from("a")));
+        assert_eq!(
+            parse("two_args(1, 2)").unwrap(), 
+            Expr::Apply(
+                Box::new(Expr::Apply(
+                        Box::new(Expr::Var(String::from("two_args"))),
+                        Box::new(Expr::Number(frac(1, 1)))
+                )),
+                Box::new(Expr::Number(frac(2, 1)))
+            )
+        );
     }
 }
