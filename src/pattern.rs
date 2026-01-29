@@ -5,6 +5,9 @@ use num_traits::cast::ToPrimitive;
 use rand::Rng;
 use rosc::OscType;
 
+use crate::scale::{Scale, map_note};
+use crate::note::Note;
+
 use std::cmp::{max, min};
 use std::ops::{Add, Div, Mul, Sub};
 use std::rc::Rc;
@@ -504,11 +507,22 @@ where
             Event::new(ev.part, f(ev.value))
         })
     }
+ }
+
+pub fn scale<P>(pattern : P, scale : &Scale) -> impl Pattern<Note>
+where P : Pattern<Note>
+{
+    move |segment: Segment| {
+        pattern.query(segment).map(move |event| {
+            let mapped_value = map_note(&scale, event.value);
+            Event::new(event.part, mapped_value)
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::pattern::{Pattern, Segment, Time, cycled, display_pattern, fastcat, frac, in_parallel, random_slowcat, slowcat, speed_up};
+    use crate::{note::Note, scale::Scale, pattern::{Pattern, Segment, Time, cycled, display_pattern, fastcat, frac, in_parallel, random_slowcat, slowcat, speed_up, scale}};
 
     #[test]
     fn test_time() {
@@ -736,5 +750,25 @@ mod tests {
         // Since the output is random, we just check that it has the correct number of events.
         let lines: Vec<&str> = output.lines().collect();
         assert_eq!(lines.len(), 5);
+    }
+
+    #[test]
+    fn test_scale() {
+        let pattern = slowcat(vec![
+            cycled(Note::new(0)),
+            cycled(Note::new(2)),
+            cycled(Note::new(4)),
+        ].into_iter());
+
+        let scaled_pattern = scale(pattern, &Scale::CMajor);
+
+        assert_eq!(
+            display_pattern(&scaled_pattern),
+            "[0, 1) | Note(0)\n\
+             [1, 2) | Note(4)\n\
+             [2, 3) | Note(7)\n\
+             [3, 4) | Note(0)\n\
+             [4, 5) | Note(4)\n"
+        );
     }
 }
