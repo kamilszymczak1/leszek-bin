@@ -2,7 +2,8 @@ n([0, 8, 4, 6, 9, 2, 0, -2]
     .fc
     .fast(3)
     .add(slow(4, cat([0, 2])))
-    .scale(["cminor", "cmajor"].cat)
+    .scale(["minor", "major", "lydian", ["minor", "major"].cat].cat)
+    .transpose(["c", "c", "f", ["f", "dh"].fc].cat)
     .struct([1, 1, 1, [~, 1].fc, 1, 1, 1, ~].fc)
     .slow(2)
     )

@@ -39,7 +39,7 @@ static EXTERNAL_ARG1: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
 });
 
 static EXTERNAL_ARG2: LazyLock<HashSet<&'static str>> =
-    LazyLock::new(|| HashSet::from(["scale", "struct", "fast", "slow", "add", "merge"]));
+    LazyLock::new(|| HashSet::from(["scale", "struct", "fast", "slow", "add", "merge", "transpose"]));
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -301,6 +301,21 @@ fn compute_external(name: String, args: Vec<Value>) -> Result<Value> {
             );
             Ok(Value::Pattern(
                 filter_map_output(pattern::scale(note_pat, scale_pat), |note| {
+                    Some(Value::Number(BigRational::from_i8(note.value())?))
+                })
+                .boxed(),
+            ))
+        }
+        "transpose" => {
+            let (scale_pat, note_pat) = arg2(args)?;
+            let note_str_pat =
+                filter_map_result_output(to_pattern(scale_pat), |val| try_atom(val));
+            let note_pat = filter_map_output(
+                filter_map_result_output(to_pattern(note_pat), try_number),
+                |num| Some(Note::new(num.floor().to_i8()?)),
+            );
+            Ok(Value::Pattern(
+                filter_map_output(pattern::transpose(note_pat, note_str_pat), |note| {
                     Some(Value::Number(BigRational::from_i8(note.value())?))
                 })
                 .boxed(),

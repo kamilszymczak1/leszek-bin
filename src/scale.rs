@@ -21,8 +21,25 @@ use crate::note::Note;
 /// | `CMinor` | 0, 2, 3, 5, 7, 8, 10      | C, D, Eb, F, G, Ab, Bb |
 #[derive(Debug, Clone)]
 pub enum Scale {
-    CMinor,
-    CMajor,
+    Minor,
+    Major,
+    Dorian,
+    Phrygian,
+    Lydian,
+    Mixolydian,
+    Locrian,
+
+    // Pentatonics
+    MajorPentatonic,
+    MinorPentatonic,
+
+    // Blues
+    Blues,
+
+    // Exotic / useful
+    HarmonicMinor,
+    MelodicMinor,
+    WholeTone,
 }
 
 /// Returns the semitone offsets for each degree of the given scale.
@@ -34,8 +51,27 @@ pub enum Scale {
 /// - etc.
 fn scale_mapping(scale: &Scale) -> Vec<i8> {
     match scale {
-        Scale::CMinor => vec![0, 2, 3, 5, 7, 8, 10],
-        Scale::CMajor => vec![0, 2, 4, 5, 7, 9, 11],
+        Scale::Major => vec![0, 2, 4, 5, 7, 9, 11],
+        Scale::Minor => vec![0, 2, 3, 5, 7, 8, 10],
+
+        // Modes
+        Scale::Dorian => vec![0, 2, 3, 5, 7, 9, 10],
+        Scale::Phrygian => vec![0, 1, 3, 5, 7, 8, 10],
+        Scale::Lydian => vec![0, 2, 4, 6, 7, 9, 11],
+        Scale::Mixolydian => vec![0, 2, 4, 5, 7, 9, 10],
+        Scale::Locrian => vec![0, 1, 3, 5, 6, 8, 10],
+
+        // Pentatonics
+        Scale::MajorPentatonic => vec![0, 2, 4, 7, 9],
+        Scale::MinorPentatonic => vec![0, 3, 5, 7, 10],
+
+        // Blues
+        Scale::Blues => vec![0, 3, 5, 6, 7, 10],
+
+        // Exotic / useful
+        Scale::HarmonicMinor => vec![0, 2, 3, 5, 7, 8, 11],
+        Scale::MelodicMinor => vec![0, 2, 3, 5, 7, 9, 11],
+        Scale::WholeTone => vec![0, 2, 4, 6, 8, 10],
     }
 }
 
@@ -69,17 +105,36 @@ pub fn map_note(scale: &Scale, note: Note) -> Note {
 impl TryInto<Scale> for String {
     type Error = anyhow::Error;
 
-    /// Parses a scale name from a string.
-    ///
-    /// Recognized values: `"cminor"`, `"cmajor"`
-    fn try_into(self) -> Result<Scale, Self::Error> {
+   fn try_into(self) -> Result<Scale, Self::Error> {
         match self.as_str() {
-            "cminor" => Ok(Scale::CMinor),
-            "cmajor" => Ok(Scale::CMajor),
+            "major" => Ok(Scale::Major),
+            "minor" => Ok(Scale::Minor),
+
+            // Modes
+            "dorian" => Ok(Scale::Dorian),
+            "phrygian" => Ok(Scale::Phrygian),
+            "lydian" => Ok(Scale::Lydian),
+            "mixolydian" => Ok(Scale::Mixolydian),
+            "locrian" => Ok(Scale::Locrian),
+
+            // Pentatonics
+            "major5" => Ok(Scale::MajorPentatonic),
+            "minor5" => Ok(Scale::MinorPentatonic),
+
+            // Blues
+            "blues" => Ok(Scale::Blues),
+
+            // Minor variants
+            "harmonicminor" => Ok(Scale::HarmonicMinor),
+            "melodicminor" => Ok(Scale::MelodicMinor),
+
+            // Symmetric / utility
+            "whole" => Ok(Scale::WholeTone),
             _ => bail!("unknown scale '{}'", self),
         }
     }
-}
+    }
+
 
 #[cfg(test)]
 mod test {
@@ -89,8 +144,8 @@ mod test {
 
     #[test]
     fn test_map_note() {
-        assert_eq!(map_note(&Scale::CMajor, Note::new(0)), Note::new(0));
-        assert_eq!(map_note(&Scale::CMajor, Note::new(-1)), Note::new(-1));
-        assert_eq!(map_note(&Scale::CMinor, Note::new(13)), Note::new(22));
+        assert_eq!(map_note(&Scale::Major, Note::new(0)), Note::new(0));
+        assert_eq!(map_note(&Scale::Major, Note::new(-1)), Note::new(-1));
+        assert_eq!(map_note(&Scale::Minor, Note::new(13)), Note::new(22));
     }
 }

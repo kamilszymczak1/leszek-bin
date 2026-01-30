@@ -381,6 +381,30 @@ where
     combine_left(pattern, scales, |note, scale| map_note(&scale, note))
 }
 
+pub fn transpose<P, Q>(pattern: P, scales: Q) -> impl Pattern<Note>
+where
+    P: Pattern<Note>,
+    Q: Pattern<String>,
+{
+    combine_left(pattern, scales, |note, note_str| 
+        Note::new(note.value() + match note_str.as_str() {
+            "c"  => 0,
+            "ch" => 1,
+            "d"  => 2,
+            "dh" => 3,
+            "e"  => 4,
+            "f"  => 5,
+            "fh" => 6,
+            "g"  => 7,
+            "gh" => 8,
+            "a"  => 9,
+            "ah" => 10,
+            "b"  => 11,
+            _    => 0,
+        })
+    )
+}
+
 pub fn empty<T>() -> impl Pattern<T> {
     move |_: Segment| std::iter::empty()
 }
@@ -705,7 +729,7 @@ mod tests {
 
         let scaled_pattern = scale(
             pattern,
-            slowcat(vec![cycled(Scale::CMajor), cycled(Scale::CMinor)].into_iter()),
+            slowcat(vec![cycled(Scale::Major), cycled(Scale::Minor)].into_iter()),
         );
 
         assert_eq!(
