@@ -52,10 +52,7 @@ impl<T> Event<T> {
     }
 
     fn scaled(self, factor: BigRational) -> Event<T> {
-        Event::new(
-            self.part.scaled(factor),
-            self.value,
-        )
+        Event::new(self.part.scaled(factor), self.value)
     }
 
     fn map_value<S>(self, f: impl Fn(T) -> S) -> Event<S> {
