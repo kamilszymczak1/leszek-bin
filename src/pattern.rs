@@ -2,7 +2,6 @@ use num::BigRational;
 use rand::Rng;
 use rosc::OscType;
 
-use crate::scale::{Scale, map_note};
 use crate::note::Note;
 use crate::segment::{self, Segment, cycle_segment_from_time};
 use crate::time::{frac, Time};
@@ -19,15 +18,12 @@ pub struct Part {
 
 impl Part {
     fn new(part: Segment, whole: Option<Segment>) -> Part {
-        Part {
-            part, 
-            whole,
-        }
+        Part { part, whole }
     }
     fn scaled(self, factor: BigRational) -> Part {
         Part::new(
             self.part.scaled(factor.clone()),
-            self.whole.map(|w| w.scaled(factor))
+            self.whole.map(|w| w.scaled(factor)),
         )
     }
 }
@@ -52,52 +48,58 @@ pub struct Event<T> {
 
 impl<T> Event<T> {
     fn new(part: Part, a: T) -> Self {
-        Event {
-            part,
-            value: a,
-        }
+        Event { part, value: a }
     }
 
-    fn scaled(self, factor: BigRational) -> Event<T>  {
+    fn scaled(self, factor: BigRational) -> Event<T> {
         Event::new(
             Part::new(
                 self.part.part.scaled(factor.clone()),
-                self.part.whole.map(|w| w.scaled(factor.clone()))
+                self.part.whole.map(|w| w.scaled(factor.clone())),
             ),
-            self.value
+            self.value,
         )
     }
 
     fn map_value<S>(self, f: impl Fn(T) -> S) -> Event<S> {
-        Event::new(
-            self.part,
-            f(self.value)
-        )
+        Event::new(self.part, f(self.value))
     }
 }
 
-impl<T> std::fmt::Display for Event<T> where T: std::fmt::Display {
+impl<T> std::fmt::Display for Event<T>
+where
+    T: std::fmt::Display,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} | {}", self.part, self.value)
     }
 }
 
-impl<T> std::fmt::Debug for Event<T> where T: std::fmt::Debug {
+impl<T> std::fmt::Debug for Event<T>
+where
+    T: std::fmt::Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?} | {:?}", self.part, self.value)
     }
 }
 
-pub trait Pattern<T> where T: Sized {
+pub trait Pattern<T>
+where
+    T: Sized,
+{
     type Events: Iterator<Item = Event<T>>;
 
     fn query(&self, segment: Segment) -> Self::Events;
 
-    fn boxed(self) -> BoxPattern<T> 
-    where Self: Sized, Self: 'static, T: 'static {
-        let boxed_pattern: Rc<dyn Pattern<T, Events = BoxEvents<T>>> = Rc::new(move |segment| {
-            BoxEvents(Box::new(self.query(segment)))
-        });
+    fn boxed(self) -> BoxPattern<T>
+    where
+        Self: Sized,
+        Self: 'static,
+        T: 'static,
+    {
+        let boxed_pattern: Rc<dyn Pattern<T, Events = BoxEvents<T>>> =
+            Rc::new(move |segment| BoxEvents(Box::new(self.query(segment))));
         BoxPattern(boxed_pattern)
     }
 }
@@ -127,7 +129,7 @@ pub fn cycled<T: Clone>(a: T) -> impl Pattern<T> {
 impl<T, I, F> Pattern<T> for F
 where
     F: Fn(Segment) -> I,
-    I: Iterator<Item = Event<T>>
+    I: Iterator<Item = Event<T>>,
 {
     type Events = I;
 
@@ -136,8 +138,10 @@ where
     }
 }
 
-struct Rate<T, I> 
-where T: Pattern<I> {
+struct Rate<T, I>
+where
+    T: Pattern<I>,
+{
     pattern: T,
     _marker: std::marker::PhantomData<I>,
 }
@@ -155,8 +159,7 @@ impl<T> Iterator for BoxEvents<T> {
 #[derive(Clone)]
 pub struct BoxPattern<T>(Rc<dyn Pattern<T, Events = BoxEvents<T>>>);
 
-impl<T> Pattern<T> for BoxPattern<T>
-{
+impl<T> Pattern<T> for BoxPattern<T> {
     type Events = BoxEvents<T>;
 
     fn query(&self, segment: Segment) -> Self::Events {
@@ -167,14 +170,14 @@ impl<T> Pattern<T> for BoxPattern<T>
 // Speed up a pattern by a given factor. E.g a factor of 2 makes the pattern run twice as fast.
 pub fn speed_up<T, P>(pattern: P, factor: BigRational) -> impl Pattern<T>
 where
-    P: Pattern<T>
+    P: Pattern<T>,
 {
     move |segment: Segment| {
         let factor_inv = factor.recip();
         let scaled_segment = segment.scaled(factor.clone());
-        pattern.query(scaled_segment).map(move |event| {
-            event.scaled(factor_inv.clone())
-        })
+        pattern
+            .query(scaled_segment)
+            .map(move |event| event.scaled(factor_inv.clone()))
     }
 }
 
@@ -183,89 +186,108 @@ where
 // E.g slowcat([A, B]) produces <A | B | A | B | A | B ...>
 // slowcat([A, B, C]) produces <A | B | C | A | B | C ...>
 pub fn slowcat<T, I>(pats: I) -> impl Pattern<T>
-where 
+where
     I: Iterator,
-    I::Item: Pattern<T>
+    I::Item: Pattern<T>,
 {
-    let patterns: Rc<[I::Item]>  = pats.collect();
+    let patterns: Rc<[I::Item]> = pats.collect();
     move |segment: Segment| {
         let patterns = patterns.clone();
-        segment.split_on_cycles().into_iter().flat_map(move |cycle| {
-            let len = patterns.len();
-            // If this cycle's index is i, then we want to query pattern[i % len].
-            let index = cycle.start.cycle_index();
-            let pattern = &patterns[index as usize % len];
-            // We are querying this pattern index/len'th time, so that is the cycle we want to
-            // query.
-            let offset = Time::new(index as i64, 1) - Time::new((index as usize/len) as i64, 1);
-            pattern.query(cycle.clone() - offset.clone()).map(move |event| {
-                let off = offset.clone();
-                Event::new(Part::new(event.part.part + off.clone(), event.part.whole.map(|w| w + off)), event.value)
+        segment
+            .split_on_cycles()
+            .into_iter()
+            .flat_map(move |cycle| {
+                let len = patterns.len();
+                // If this cycle's index is i, then we want to query pattern[i % len].
+                let index = cycle.start.cycle_index();
+                let pattern = &patterns[index as usize % len];
+                // We are querying this pattern index/len'th time, so that is the cycle we want to
+                // query.
+                let offset =
+                    Time::new(index as i64, 1) - Time::new((index as usize / len) as i64, 1);
+                pattern
+                    .query(cycle.clone() - offset.clone())
+                    .map(move |event| {
+                        let off = offset.clone();
+                        Event::new(
+                            Part::new(
+                                event.part.part + off.clone(),
+                                event.part.whole.map(|w| w + off),
+                            ),
+                            event.value,
+                        )
+                    })
             })
-        })
     }
 }
 
 // Fastcat takes an iterator of patterns and alternates between them, but speeds up time
 // so that each pattern gets an equal share of each cycle.
 // E.g fastcat([A, B]) produces <A B | A B | A B ...>
-// fastcat([A, B, C]) produces <A B C | A B C | A B C ...> 
-pub fn fastcat<T, I>(pats : I) -> impl Pattern<T>
+// fastcat([A, B, C]) produces <A B C | A B C | A B C ...>
+pub fn fastcat<T, I>(pats: I) -> impl Pattern<T>
 where
     I: ExactSizeIterator,
-    I::Item: Pattern<T>
+    I::Item: Pattern<T>,
 {
     let len = pats.len();
     speed_up(slowcat(pats), frac(len as i64, 1))
 }
 
 pub fn random_slowcat<T, I>(pats: I) -> impl Pattern<T>
-where 
+where
     I: Iterator,
-    I::Item: Pattern<T>
+    I::Item: Pattern<T>,
 {
-    let patterns: Rc<[I::Item]>  = pats.collect();
+    let patterns: Rc<[I::Item]> = pats.collect();
     move |segment: Segment| {
         let patterns = patterns.clone();
-        segment.split_on_cycles().into_iter().flat_map(move |cycle| {
-            let mut rng = rand::rng();
-            let len = patterns.len();
-            let index = rng.random_range(0..len);
-            let pattern = &patterns[index];
-            pattern.query(cycle.clone())
-        })
+        segment
+            .split_on_cycles()
+            .into_iter()
+            .flat_map(move |cycle| {
+                let mut rng = rand::rng();
+                let len = patterns.len();
+                let index = rng.random_range(0..len);
+                let pattern = &patterns[index];
+                pattern.query(cycle.clone())
+            })
     }
 }
 
 pub fn keyed(key: &'static str, values: impl Pattern<OscType>) -> impl Pattern<ControlMessage> {
     move |segment| {
         values.query(segment).map(move |event| {
-            Event::new(event.part, ControlMessage::new(vec![(String::from(key), event.value)]))
+            Event::new(
+                event.part,
+                ControlMessage::new(vec![(String::from(key), event.value)]),
+            )
         })
     }
 }
-                
 
 pub fn in_parallel<T, I>(pats: I) -> impl Pattern<T>
 where
     I: Iterator,
     I::Item: Pattern<T>,
 {
-    let patterns: Rc<[I::Item]>  = pats.collect();
+    let patterns: Rc<[I::Item]> = pats.collect();
     move |segment: Segment| {
-        patterns.iter().flat_map(move |pattern| {
-            pattern.query(segment.clone())
-        }).collect::<Vec<_>>().into_iter()
+        patterns
+            .iter()
+            .flat_map(move |pattern| pattern.query(segment.clone()))
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 }
 
-pub fn combine<P, Q, T, R, S, F>(first : P, second : Q, f : F) -> impl Pattern<S>
+pub fn combine<P, Q, T, R, S, F>(first: P, second: Q, f: F) -> impl Pattern<S>
 where
     P: Pattern<T>,
-    Q : Pattern<R>,
-    T : Clone,
-    R : Clone,
-    F: Fn(T, R) -> S + Clone
+    Q: Pattern<R>,
+    T: Clone,
+    R: Clone,
+    F: Fn(T, R) -> S + Clone,
 {
     move |segment: Segment| {
         let second_events: Vec<Event<R>> = second.query(segment.clone()).collect();
@@ -281,7 +303,7 @@ where
                     };
                     results.push(Event::new(
                         Part::new(intersection, whole),
-                        f(fevent.value.clone(), sevent.value.clone())
+                        f(fevent.value.clone(), sevent.value.clone()),
                     ));
                 }
             }
@@ -290,106 +312,105 @@ where
     }
 }
 
-pub fn combine_left<P, Q, T, R, S, F>(first : P, second : Q, f : F) -> impl Pattern<S>
+pub fn combine_left<P, Q, T, R, S, F>(first: P, second: Q, f: F) -> impl Pattern<S>
 where
     P: Pattern<T>,
-    Q : Pattern<R>,
-    T : Clone,
-    R : Clone,
-    F: Fn(T, R) -> S + Clone
+    Q: Pattern<R>,
+    T: Clone,
+    R: Clone,
+    F: Fn(T, R) -> S + Clone,
 {
     move |segment: Segment| {
         let second_events: Vec<Event<R>> = second.query(segment.clone()).collect();
 
         let mut results = Vec::new();
         for fevent in first.query(segment.clone()) {
-            second_events.iter().filter(
-                |sevent| fevent.part.part.intersection(&sevent.part.part).is_some()
-            )
-            .min_by_key(
-                |sevent| {
-                    sevent.part.part.start.clone()
-                }
-            ).map(
-                |sevent| {
-                    results.push(fevent.map_value(|v| f(v, sevent.value.clone())));
-                }
-            );
+            if let Some(sevent) = second_events
+                .iter()
+                .filter(|sevent| fevent.part.part.intersection(&sevent.part.part).is_some())
+                .min_by_key(|sevent| sevent.part.part.start.clone())
+            {
+                results.push(fevent.map_value(|v| f(v, sevent.value.clone())));
+            }
         }
         results.into_iter()
     }
 }
 
-pub fn combine_right<P, Q, T, R, S, F>(first : P, second : Q, f : F) -> impl Pattern<S>
+pub fn combine_right<P, Q, T, R, S, F>(first: P, second: Q, f: F) -> impl Pattern<S>
 where
     P: Pattern<T>,
-    Q : Pattern<R>,
-    T : Clone,
-    R : Clone,
-    F: Fn(T, R) -> S + Clone
+    Q: Pattern<R>,
+    T: Clone,
+    R: Clone,
+    F: Fn(T, R) -> S + Clone,
 {
-    combine_left(
-        second,
-        first,
-        move |b, a| f(a, b)
-    )
+    combine_left(second, first, move |b, a| f(a, b))
 }
 
-pub fn structure<P, Q, T>(pattern : P, filter : Q) -> impl Pattern<T>
+pub fn structure<P, Q, T>(pattern: P, filter: Q) -> impl Pattern<T>
 where
     P: Pattern<T>,
-    Q : Pattern<()>,
-    T : Clone
+    Q: Pattern<()>,
+    T: Clone,
 {
-    combine_right(
-        pattern,
-        filter,
-        |a, _| a
-    )
+    combine_right(pattern, filter, |a, _| a)
 }
 
-pub fn filter_output<T>(pat: impl Pattern<Option<T>>) -> impl Pattern<T> { 
+pub fn filter_output<T>(pat: impl Pattern<Option<T>>) -> impl Pattern<T> {
     move |segment: Segment| {
-        pat.query(segment).map(|ev| {
+        pat.query(segment).filter_map(|ev| {
             if let Some(val) = ev.value {
                 Some(Event::new(ev.part, val))
             } else {
                 None
             }
-        }).flatten()
+        })
     }
 }
 
 pub fn map_output<T, U, F, P>(pat: P, f: F) -> impl Pattern<U>
 where
     P: Pattern<T>,
-    F: Fn(T) -> U + Clone
-{ 
+    F: Fn(T) -> U + Clone,
+{
     move |segment: Segment| {
         let f = f.clone();
-        pat.query(segment).map(move |ev| {
-            Event::new(ev.part, f(ev.value))
-        })
+        pat.query(segment)
+            .map(move |ev| Event::new(ev.part, f(ev.value)))
     }
- }
-
-pub fn scale<P, Q>(pattern : P, scales: Q) -> impl Pattern<Note>
-where P: Pattern<Note>, Q: Pattern<Scale>
-{
-    combine_left(
-        pattern,
-        scales,
-        |note, scale| {
-            map_note(&scale, note)
-        }
-    )
 }
 
-pub fn empty<T>() -> impl Pattern<T>
+pub fn filter_map_output<T, U, F, P>(pat: P, f: F) -> impl Pattern<U>
+where
+    P: Pattern<T>,
+    F: Fn(T) -> Option<U> + Clone,
 {
-    move |_: Segment| {
-        std::iter::empty()
-    }
+    filter_output(map_output(pat, f))
+}
+
+pub fn scale<P, Q>(pattern: P, scales: Q) -> impl Pattern<Note>
+where
+    P: Pattern<Note>,
+    Q: Pattern<Scale>,
+{
+    combine_left(pattern, scales, |note, scale| map_note(&scale, note))
+}
+
+pub fn empty<T>() -> impl Pattern<T> {
+    move |_: Segment| std::iter::empty()
+}
+
+pub fn merge<P0, P1>(pattern0: P0, pattern1: P1) -> impl Pattern<ControlMessage>
+where
+    P0: Pattern<ControlMessage>,
+    P1: Pattern<ControlMessage>,
+{
+    combine(pattern0, pattern1, |msg0, msg1| {
+        let mut msg = msg0.clone();
+        msg.merge(&mut msg1.clone());
+        msg
+    })
 }
 
 #[cfg(test)]
@@ -399,17 +420,18 @@ mod tests {
     #[test]
     fn test_time() {
         let seg = Segment::new(Time::new(1, 2), Time::new(28, 10));
-        assert_eq!(seg.split_on_cycles(), vec![
-            Segment::new(Time::new(1, 2), Time::new(1, 1)),
-            Segment::new(Time::new(1, 1), Time::new(2, 1)),
-            Segment::new(Time::new(2, 1), Time::new(28, 10)),
-        ]);
+        assert_eq!(
+            seg.split_on_cycles(),
+            vec![
+                Segment::new(Time::new(1, 2), Time::new(1, 1)),
+                Segment::new(Time::new(1, 1), Time::new(2, 1)),
+                Segment::new(Time::new(2, 1), Time::new(28, 10)),
+            ]
+        );
 
         let small_seg = Segment::new(Time::new(1, 3), Time::new(2, 3));
-        assert_eq!(small_seg.split_on_cycles(), vec![
-            small_seg
-        ]);
-        
+        assert_eq!(small_seg.split_on_cycles(), vec![small_seg]);
+
         assert_eq!(Time::new(85, 9).cycle_start(), Time::new(9, 1));
         assert_eq!(Time::new(85, 9).cycle_index(), 9);
         assert_eq!(cycle_segment_from_time(&Time::new(13, 2)), Segment::new(Time::new(6, 1), Time::new(7, 1)));
@@ -440,15 +462,18 @@ mod tests {
              [3, 4) | 2\n\
              [4, 5) | 1\n"
         );
-        
+
         // Make sure the inner slowcat alternates, i.e that each pattern's time
         // doesn't advance while they are not active.
         // <0 <1 2>> = 0 1 0 2 0 1 ...
         assert_eq!(
-            display_pattern(&slowcat(vec![
-                    cycled(0).boxed(), 
+            display_pattern(&slowcat(
+                vec![
+                    cycled(0).boxed(),
                     slowcat(vec![cycled(1), cycled(2)].into_iter()).boxed()
-            ].into_iter())),
+                ]
+                .into_iter()
+            )),
             "[0, 1) | 0\n\
              [1, 2) | 1\n\
              [2, 3) | 0\n\
@@ -459,7 +484,10 @@ mod tests {
 
     #[test]
     fn test_fastcat() {
-        println!("{}", display_pattern(&fastcat(vec![cycled(1), cycled(2)].into_iter())));
+        println!(
+            "{}",
+            display_pattern(&fastcat(vec![cycled(1), cycled(2)].into_iter()))
+        );
         assert_eq!(
             display_pattern(&fastcat(vec![cycled(1), cycled(2)].into_iter())),
             "[0, 1/2) | 1\n\
@@ -538,10 +566,13 @@ mod tests {
              [4, 5) | 2\n"
         );
 
-        let pattern = in_parallel(vec![
-            speed_up(cycled(1), frac(2, 3)),
-            speed_up(cycled(2), frac(3, 2))
-        ].into_iter());
+        let pattern = in_parallel(
+            vec![
+                speed_up(cycled(1), frac(2, 3)),
+                speed_up(cycled(2), frac(3, 2)),
+            ]
+            .into_iter(),
+        );
 
         assert_eq!(
             display_pattern(&pattern),
@@ -562,11 +593,7 @@ mod tests {
 
     #[test]
     fn test_combine() {
-        let pattern = crate::pattern::combine(
-            cycled(1),
-            cycled(10),
-            |a, b| a + b
-        );
+        let pattern = crate::pattern::combine(cycled(1), cycled(10), |a, b| a + b);
 
         assert_eq!(
             display_pattern(&pattern),
@@ -597,11 +624,7 @@ mod tests {
         //      [9/2, 5) | 4\n"
         // );
 
-        let pattern_combined = crate::pattern::combine(
-            pattern1,
-            pattern2,
-            |a, b| a * b
-        );
+        let pattern_combined = crate::pattern::combine(pattern1, pattern2, |a, b| a * b);
 
         assert_eq!(
             display_pattern(&pattern_combined),
@@ -620,7 +643,7 @@ mod tests {
         let pattern = crate::pattern::combine_left(
             fastcat(vec![cycled(1), cycled(2)].into_iter()).boxed(),
             fastcat(vec![cycled(5), cycled(10), cycled(15)].into_iter()).boxed(),
-            |a, b| a + b
+            |a, b| a + b,
         );
 
         assert_eq!(
@@ -643,7 +666,7 @@ mod tests {
         let pattern = crate::pattern::combine_right(
             fastcat(vec![cycled(1), cycled(2)].into_iter()).boxed(),
             fastcat(vec![cycled(5), cycled(10), cycled(15)].into_iter()).boxed(),
-            |a, b| a + b
+            |a, b| a + b,
         );
 
         assert_eq!(
@@ -665,7 +688,7 @@ mod tests {
              [14/3, 5) | 17\n"
         );
     }
-    
+
     #[test]
     fn test_random_slowcat() {
         let pattern = random_slowcat(vec![cycled(1), cycled(2)].into_iter());
@@ -677,16 +700,19 @@ mod tests {
 
     #[test]
     fn test_scale() {
-        let pattern = slowcat(vec![
-            cycled(Note::new(0)),
-            cycled(Note::new(2)),
-            cycled(Note::new(4)),
-        ].into_iter());
+        let pattern = slowcat(
+            vec![
+                cycled(Note::new(0)),
+                cycled(Note::new(2)),
+                cycled(Note::new(4)),
+            ]
+            .into_iter(),
+        );
 
-        let scaled_pattern = scale(pattern, slowcat(vec![
-            cycled(Scale::CMajor),
-            cycled(Scale::CMinor),
-        ].into_iter()));
+        let scaled_pattern = scale(
+            pattern,
+            slowcat(vec![cycled(Scale::CMajor), cycled(Scale::CMinor)].into_iter()),
+        );
 
         assert_eq!(
             display_pattern(&scaled_pattern),
@@ -700,16 +726,9 @@ mod tests {
 
     #[test]
     fn test_structure() {
-        let pattern = slowcat(vec![
-            cycled(1),
-            cycled(2),
-            cycled(3),
-        ].into_iter());
+        let pattern = slowcat(vec![cycled(1), cycled(2), cycled(3)].into_iter());
 
-        let filter = slowcat(vec![
-            cycled(()).boxed(),
-            empty().boxed(),
-        ].into_iter());
+        let filter = slowcat(vec![cycled(()).boxed(), empty().boxed()].into_iter());
 
         let filtered_pattern = structure(pattern, filter);
 
@@ -720,16 +739,9 @@ mod tests {
              [4, 5) | 2\n"
         );
 
-        let pattern = fastcat(vec![
-            cycled(1),
-            cycled(2),
-            cycled(3),
-        ].into_iter());
+        let pattern = fastcat(vec![cycled(1), cycled(2), cycled(3)].into_iter());
 
-        let filter = fastcat(vec![
-            cycled(()).boxed(),
-            empty().boxed(),
-        ].into_iter());
+        let filter = fastcat(vec![cycled(()).boxed(), empty().boxed()].into_iter());
 
         let filtered_pattern = structure(pattern, filter);
 
