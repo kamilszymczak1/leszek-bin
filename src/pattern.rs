@@ -1,3 +1,31 @@
+//! Pattern module implementing time-based musical patterns.
+//!
+//! This module provides the core pattern abstraction used throughout Leszek.
+//! Patterns are functions from time segments to events, enabling expressive
+//! composition of musical sequences.
+//!
+//! # Core Concepts
+//!
+//! - **Time**: Represented as arbitrary-precision rationals for exact timing
+//! - **Segment**: A time interval `[start, end)` for querying patterns
+//! - **Event**: A value occurring during a specific time segment
+//! - **Pattern**: A function that produces events for any queried time segment
+//!
+//! # Pattern Combinators
+//!
+//! Sequential composition:
+//! - `slowcat`: Alternate patterns across cycles (one pattern per cycle)
+//! - `fastcat`: Alternate patterns within cycles (all patterns each cycle)
+//!
+//! Parallel composition:
+//! - `in_parallel`: Play multiple patterns simultaneously
+//! - `combine`: Combine overlapping events with a function
+//!
+//! Transformations:
+//! - `speed_up`: Change pattern tempo
+//! - `structure`: Apply rhythmic gating
+//! - `scale`, `transpose`: Musical transformations
+
 use num::BigRational;
 use num::{self};
 use rosc::OscType;
@@ -12,9 +40,16 @@ use std::rc::Rc;
 
 use crate::superdirt::ControlMessage;
 
+/// Represents the temporal extent of an event.
+///
+/// Each event has a `part` (the actual sounding portion) and optionally
+/// a `whole` (the theoretical complete duration before any slicing).
+/// The distinction is important for onset detection and pattern alignment.
 #[derive(PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct Part {
+    /// The actual sounding portion of the event
     pub part: Segment,
+    /// The theoretical whole duration (before slicing by queries)
     pub whole: Option<Segment>,
 }
 
@@ -42,9 +77,16 @@ impl std::fmt::Debug for Part {
     }
 }
 
+/// An event produced by a pattern query.
+///
+/// Events associate a value with its temporal location. When patterns
+/// are combined, events may be split, merged, or filtered based on
+/// their time segments.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Event<T> {
+    /// The temporal extent of this event
     pub part: Part,
+    /// The value carried by this event
     pub value: T,
 }
 
@@ -80,14 +122,26 @@ where
     }
 }
 
+/// The core pattern trait: a function from time segments to events.
+///
+/// Patterns are queried with a time segment and return an iterator of
+/// events that occur within that segment. This functional representation
+/// enables lazy evaluation and infinite patterns.
+///
+/// # Implementation
+///
+/// Any closure `Fn(Segment) -> Iterator<Item = Event<T>>` automatically
+/// implements `Pattern<T>`, making it easy to create custom patterns.
 pub trait Pattern<T>
 where
     T: Sized,
 {
     type Events: Iterator<Item = Event<T>>;
 
+    /// Query the pattern for events within the given time segment.
     fn query(&self, segment: Segment) -> Self::Events;
 
+    /// Box this pattern for dynamic dispatch and storage.
     fn boxed(self) -> BoxPattern<T>
     where
         Self: Sized,
@@ -113,6 +167,11 @@ where
     result
 }
 
+/// Creates a pattern that repeats a single value every cycle.
+///
+/// This is the simplest pattern constructor. The value fills each
+/// complete cycle, making it useful as a building block for more
+/// complex patterns.
 pub fn cycled<T: Clone>(a: T) -> impl Pattern<T> {
     move |segment: Segment| {
         let a = a.clone();
@@ -147,6 +206,11 @@ impl<T> Iterator for BoxEvents<T> {
     }
 }
 
+/// A type-erased pattern for dynamic dispatch.
+///
+/// `BoxPattern` wraps any pattern implementation, enabling storage
+/// in collections and recursive pattern definitions. The cost is
+/// dynamic dispatch through `Rc` and boxed iterators.
 #[derive(Clone)]
 pub struct BoxPattern<T>(Rc<dyn Pattern<T, Events = BoxEvents<T>>>);
 
@@ -225,6 +289,10 @@ where
     speed_up(slowcat(pats), frac(len as i64, 1))
 }
 
+/// Creates a pattern of control messages from a pattern of OSC values.
+///
+/// This is used internally to convert value patterns into SuperDirt
+/// control parameters like "s" (sound) or "n" (note number).
 pub fn keyed(key: &'static str, values: impl Pattern<OscType>) -> impl Pattern<ControlMessage> {
     move |segment| {
         values.query(segment).map(move |event| {
@@ -236,6 +304,11 @@ pub fn keyed(key: &'static str, values: impl Pattern<OscType>) -> impl Pattern<C
     }
 }
 
+/// Plays multiple patterns simultaneously.
+///
+/// All patterns are queried for the same time segment and their
+/// events are combined. This is the primary way to layer sounds
+/// in a live coding performance.
 pub fn in_parallel<T, I>(pats: I) -> impl Pattern<T>
 where
     I: Iterator,
@@ -251,6 +324,11 @@ where
     }
 }
 
+/// Combines two patterns by applying a function to overlapping events.
+///
+/// For each pair of events that overlap in time, produces a new event
+/// with the intersection of their time segments and the combined value.
+/// This is useful for operations like addition or modulation.
 pub fn combine<P, Q, T, R, S, F>(first: P, second: Q, f: F) -> impl Pattern<S>
 where
     P: Pattern<T>,
@@ -282,6 +360,11 @@ where
     }
 }
 
+/// Combines patterns, preserving the structure of the first pattern.
+///
+/// Unlike `combine`, this only produces events for each event in the
+/// first pattern, taking the first overlapping value from the second.
+/// Useful when the first pattern defines the rhythmic structure.
 pub fn combine_left<P, Q, T, R, S, F>(first: P, second: Q, f: F) -> impl Pattern<S>
 where
     P: Pattern<T>,
@@ -318,6 +401,11 @@ where
     combine_left(second, first, move |b, a| f(a, b))
 }
 
+/// Applies a rhythmic structure to a pattern.
+///
+/// The filter pattern determines when events from the main pattern
+/// are allowed through. This enables rhythmic gating effects like
+/// `[1, ~, 1, ~]` to create syncopation.
 pub fn structure<P, Q, T>(pattern: P, filter: Q) -> impl Pattern<T>
 where
     P: Pattern<T>,
@@ -373,6 +461,11 @@ where
     }))
 }
 
+/// Applies a musical scale to a pattern of notes.
+///
+/// Maps scale degrees (0, 1, 2, ...) to actual MIDI note offsets
+/// based on the active scale pattern. Enables melodic patterns
+/// that stay in key as the scale changes.
 pub fn scale<P, Q>(pattern: P, scales: Q) -> impl Pattern<Note>
 where
     P: Pattern<Note>,
@@ -381,6 +474,10 @@ where
     combine_left(pattern, scales, |note, scale| map_note(&scale, note))
 }
 
+/// Transposes a pattern of notes by a root note.
+///
+/// Shifts all notes by the semitone value of the given note name.
+/// Note names: c, ch (C#), d, dh (D#), e, f, fh (F#), g, gh (G#), a, ah (A#), b
 pub fn transpose<P, Q>(pattern: P, scales: Q) -> impl Pattern<Note>
 where
     P: Pattern<Note>,
@@ -408,10 +505,19 @@ where
     })
 }
 
+/// Creates a pattern that produces no events (silence).
+///
+/// This is the identity element for parallel composition and useful
+/// for creating rests in rhythmic patterns.
 pub fn empty<T>() -> impl Pattern<T> {
     move |_: Segment| std::iter::empty()
 }
 
+/// Merges two control message patterns into one.
+///
+/// When events overlap, their control parameters are combined into
+/// a single message. This enables layering effects like combining
+/// note and velocity patterns.
 pub fn merge<P0, P1>(pattern0: P0, pattern1: P1) -> impl Pattern<ControlMessage>
 where
     P0: Pattern<ControlMessage>,
