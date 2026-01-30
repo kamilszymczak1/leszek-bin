@@ -1,4 +1,7 @@
-use std::{cmp::{max, min}, ops::{Add, Sub}};
+use std::{
+    cmp::{max, min},
+    ops::{Add, Sub},
+};
 
 use num::{BigInt, BigRational};
 
@@ -31,7 +34,7 @@ impl Segment {
         Segment { start, end }
     }
 
-    // Split segment on the boundaries between cycles. E.g splitting [0.5, 2.8) results in 
+    // Split segment on the boundaries between cycles. E.g splitting [0.5, 2.8) results in
     // [[0.5, 1), [1, 2), [2, 2.8)]
     pub fn split_on_cycles(&self) -> Vec<Segment> {
         let start_cycle = self.start.cycle_index() + 1;
@@ -44,12 +47,15 @@ impl Segment {
         let mut result: Vec<Segment> = vec![];
 
         let left_full_time = Time::from_cycle_index(start_cycle);
-        if self.start != left_full_time  {
+        if self.start != left_full_time {
             result.push(Segment::new(self.start.clone(), left_full_time));
         }
 
         for cycle in start_cycle..end_cycle {
-            let cycle_segment = Segment::new(Time::from_cycle_index(cycle), Time::from_cycle_index(cycle + 1));
+            let cycle_segment = Segment::new(
+                Time::from_cycle_index(cycle),
+                Time::from_cycle_index(cycle + 1),
+            );
             result.push(cycle_segment);
         }
 
@@ -96,5 +102,8 @@ impl std::fmt::Debug for Segment {
 }
 
 pub fn cycle_segment_from_time(t: &Time) -> Segment {
-    Segment::new(t.cycle_start(), Time(t.cycle_start().0 + BigRational::from(BigInt::from(1))))
+    Segment::new(
+        t.cycle_start(),
+        Time(t.cycle_start().0 + BigRational::from(BigInt::from(1))),
+    )
 }

@@ -1,8 +1,8 @@
-use num::{BigRational, ToPrimitive};
 use num::rational::Ratio;
 use num::{self, BigInt};
+use num::{BigRational, ToPrimitive};
 
-use std::ops::{Add, Sub, Mul, Div};
+use std::ops::{Add, Div, Mul, Sub};
 
 #[derive(Eq, PartialEq, Clone, PartialOrd, Ord)]
 pub struct Time(pub num::BigRational);

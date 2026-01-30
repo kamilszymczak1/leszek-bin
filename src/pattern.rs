@@ -3,12 +3,12 @@ use rand::Rng;
 use rosc::OscType;
 
 use crate::note::Note;
+use crate::scale::{Scale, map_note};
 use crate::segment::{self, Segment, cycle_segment_from_time};
-use crate::time::{frac, Time};
+use crate::time::{Time, frac};
 use std::rc::Rc;
 
 use crate::superdirt::ControlMessage;
-
 
 #[derive(PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct Part {
@@ -121,7 +121,10 @@ pub fn cycled<T: Clone>(a: T) -> impl Pattern<T> {
     move |segment: Segment| {
         let a = a.clone();
         segment.split_on_cycles().into_iter().map(move |cycle| {
-            Event::new(Part::new(cycle.clone(), Some(cycle_segment_from_time(&cycle.start))), a.clone())
+            Event::new(
+                Part::new(cycle.clone(), Some(cycle_segment_from_time(&cycle.start))),
+                a.clone(),
+            )
         })
     }
 }
@@ -415,7 +418,16 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{note::Note, pattern::{Pattern, Segment, Time, cycled, display_pattern, empty, fastcat, in_parallel, random_slowcat, scale, slowcat, speed_up, structure}, scale::Scale, segment::cycle_segment_from_time, time::frac};
+    use crate::{
+        note::Note,
+        pattern::{
+            Pattern, Segment, Time, cycled, display_pattern, empty, fastcat, in_parallel,
+            random_slowcat, scale, slowcat, speed_up, structure,
+        },
+        scale::Scale,
+        segment::cycle_segment_from_time,
+        time::frac,
+    };
 
     #[test]
     fn test_time() {
@@ -434,7 +446,10 @@ mod tests {
 
         assert_eq!(Time::new(85, 9).cycle_start(), Time::new(9, 1));
         assert_eq!(Time::new(85, 9).cycle_index(), 9);
-        assert_eq!(cycle_segment_from_time(&Time::new(13, 2)), Segment::new(Time::new(6, 1), Time::new(7, 1)));
+        assert_eq!(
+            cycle_segment_from_time(&Time::new(13, 2)),
+            Segment::new(Time::new(6, 1), Time::new(7, 1))
+        );
     }
 
     #[test]

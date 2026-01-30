@@ -7,7 +7,7 @@ use std::net::UdpSocket;
 
 use rosc::{self, OscBundle, OscMessage, OscPacket, OscType};
 
-use crate::pattern::{Pattern, Event};
+use crate::pattern::{Event, Pattern};
 use crate::segment::Segment;
 use crate::time::Time;
 

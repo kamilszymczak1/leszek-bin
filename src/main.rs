@@ -1,7 +1,7 @@
 mod note;
 mod scale;
-mod time;
 mod segment;
+mod time;
 
 mod lang;
 mod parser;

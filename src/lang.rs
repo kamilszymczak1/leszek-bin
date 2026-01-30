@@ -9,6 +9,7 @@ use crate::note::Note;
 use crate::pattern::{self, fastcat, filter_map_output, in_parallel, speed_up};
 use crate::pattern::{BoxPattern, Pattern, filter_output, map_output, slowcat};
 use crate::superdirt::ControlMessage;
+use crate::time;
 
 use num::ToPrimitive;
 
@@ -176,7 +177,7 @@ fn compute_external(name: String, args: Vec<Value>) -> Option<Value> {
         }
         "slow" => {
             let (rate, pat) = arg2(args)?;
-            let out_pat = speed_up(as_pattern(pat)?, pattern::frac(1, 1) / as_number(rate)?);
+            let out_pat = speed_up(as_pattern(pat)?, time::frac(1, 1) / as_number(rate)?);
             Some(Value::Pattern(out_pat.boxed()))
         }
         "merge" => {
@@ -329,8 +330,8 @@ mod tests {
             Expr::Apply(
                 Box::new(Expr::Var(String::from("slowcat"))),
                 Box::new(Expr::Vector(vec![
-                        Expr::Number(time::frac(0, 1)), 
-                        Expr::Number(time::frac(1, 1))
+                    Expr::Number(time::frac(0, 1)),
+                    Expr::Number(time::frac(1, 1)),
                 ])),
             ),
         );
