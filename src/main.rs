@@ -1,6 +1,8 @@
+mod client;
 mod note;
 mod scale;
 mod segment;
+mod server;
 mod time;
 
 mod lang;
@@ -109,7 +111,7 @@ fn main() {
 fn run_collaboration_server(bind: &str) {
     let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
     rt.block_on(async {
-        if let Err(e) = network::run_server(bind).await {
+        if let Err(e) = server::run_server(bind).await {
             eprintln!("Server error: {}", e);
         }
     });
@@ -123,7 +125,7 @@ fn run_collaboration_client(server_addr: &str, tracked_file: &str) {
     rt.block_on(async {
         // Connect to the server
         let (mut client, mut network_update_rx, _handle) =
-            match network::CollaborationClient::connect(server_addr).await {
+            match client::CollaborationClient::connect(server_addr).await {
                 Ok(c) => c,
                 Err(e) => {
                     eprintln!("Failed to connect to server: {}", e);
