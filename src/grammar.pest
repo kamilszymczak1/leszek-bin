@@ -1,15 +1,19 @@
 WHITESPACE = _{ " " | "\t" | "\n" }
-number = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT*)? }
+number = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT*)? }
+
 dot = { "." }
+at = { "@" }
+
 infix_op = _{
-    dot
+    dot | at
 }
 
 string = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
 vector = { "[" ~ (expr ~ ("," ~ expr)*)? ~ "]" }
 identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 call = { identifier ~ "(" ~ expr ~ ( "," ~ expr )* ~ ")"  }
-atom = _{ call | identifier ~ !("(") | number | "(" ~ expr ~ ")" | vector | string }
+empty = { "~" }
+atom = _{ call | identifier ~ !("(") | number | "(" ~ expr ~ ")" | vector | string | empty }
 
 expr = { 
     atom ~ (infix_op ~ atom)*

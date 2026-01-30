@@ -1,12 +1,13 @@
-n(
-    slow(2, struct(
-        scale(
-            cat(["cminor", "cmajor"]),
-            add(slow(4, cat([0, 2])), fast(3, fc([0, 8, 4, 6, 9, 2, 0, 2])))
-        ),
-        fast(8, "x")
-    ))
-)
-.room(0.2)
-.s("superpiano")
-.velocity(fast(8, fast(2, cat([0.9, 0.6, 0.7]))))
+n([0, 8, 4, 6, 9, 2, 0, -2]
+    .fc
+    .fast(3)
+    .add(slow(4, cat([0, 2])))
+    .scale(["minor", "major", "lydian", ["minor", "major"].cat].cat)
+    .transpose(["c", "c", "f", ["f", "dh"].fc].cat)
+    .struct([1, 1, 1, [~, 1].fc, 1, 1, 1, ~].fc)
+    .slow(2)
+    )
+    @room(0.2)
+    @s("supervibe")
+    @velocity(fast(8, fast(2, cat([0.9, 0.6, 0.7]))))
+    @accelerate([0.0, 0.0, 0.01].cat.slow(4))

@@ -1,9 +1,8 @@
 use num::BigRational;
-use num::rational::Ratio;
-use num::{self, BigInt};
-use num_traits::cast::ToPrimitive;
-use rand::Rng;
+use num::{self};
 use rosc::OscType;
+
+use anyhow::Result;
 
 use crate::note::Note;
 use crate::scale::{Scale, map_note};
@@ -138,14 +137,6 @@ where
     }
 }
 
-struct Rate<T, I>
-where
-    T: Pattern<I>,
-{
-    pattern: T,
-    _marker: std::marker::PhantomData<I>,
-}
-
 pub struct BoxEvents<T>(Box<dyn Iterator<Item = Event<T>>>);
 
 impl<T> Iterator for BoxEvents<T> {
@@ -232,27 +223,6 @@ where
 {
     let len = pats.len();
     speed_up(slowcat(pats), frac(len as i64, 1))
-}
-
-pub fn random_slowcat<T, I>(pats: I) -> impl Pattern<T>
-where
-    I: Iterator,
-    I::Item: Pattern<T>,
-{
-    let patterns: Rc<[I::Item]> = pats.collect();
-    move |segment: Segment| {
-        let patterns = patterns.clone();
-        segment
-            .split_on_cycles()
-            .into_iter()
-            .flat_map(move |cycle| {
-                let mut rng = rand::rng();
-                let len = patterns.len();
-                let index = rng.random_range(0..len);
-                let pattern = &patterns[index];
-                pattern.query(cycle.clone())
-            })
-    }
 }
 
 pub fn keyed(key: &'static str, values: impl Pattern<OscType>) -> impl Pattern<ControlMessage> {
@@ -389,12 +359,53 @@ where
     filter_output(map_output(pat, f))
 }
 
+pub fn filter_map_result_output<T, U, F, P>(pat: P, f: F) -> impl Pattern<U>
+where
+    P: Pattern<T>,
+    F: Fn(T) -> Result<U> + Clone,
+{
+    filter_output(map_output(pat, move |input| match f(input) {
+        Ok(output) => Some(output),
+        Err(e) => {
+            eprintln!("error in pattern while applying fallible function: {}", e);
+            None
+        }
+    }))
+}
+
 pub fn scale<P, Q>(pattern: P, scales: Q) -> impl Pattern<Note>
 where
     P: Pattern<Note>,
     Q: Pattern<Scale>,
 {
     combine_left(pattern, scales, |note, scale| map_note(&scale, note))
+}
+
+pub fn transpose<P, Q>(pattern: P, scales: Q) -> impl Pattern<Note>
+where
+    P: Pattern<Note>,
+    Q: Pattern<String>,
+{
+    combine_left(pattern, scales, |note, note_str| {
+        Note::new(
+            note.value()
+                + match note_str.as_str() {
+                    "c" => 0,
+                    "ch" => 1,
+                    "d" => 2,
+                    "dh" => 3,
+                    "e" => 4,
+                    "f" => 5,
+                    "fh" => 6,
+                    "g" => 7,
+                    "gh" => 8,
+                    "a" => 9,
+                    "ah" => 10,
+                    "b" => 11,
+                    _ => 0,
+                },
+        )
+    })
 }
 
 pub fn empty<T>() -> impl Pattern<T> {
@@ -418,8 +429,8 @@ mod tests {
     use crate::{
         note::Note,
         pattern::{
-            Pattern, Segment, Time, cycled, display_pattern, empty, fastcat, in_parallel,
-            random_slowcat, scale, slowcat, speed_up, structure,
+            Pattern, Segment, Time, cycled, display_pattern, empty, fastcat, in_parallel, scale,
+            slowcat, speed_up, structure,
         },
         scale::Scale,
         segment::cycle_segment_from_time,
@@ -709,15 +720,6 @@ mod tests {
     }
 
     #[test]
-    fn test_random_slowcat() {
-        let pattern = random_slowcat(vec![cycled(1), cycled(2)].into_iter());
-        let output = display_pattern(&pattern);
-        // Since the output is random, we just check that it has the correct number of events.
-        let lines: Vec<&str> = output.lines().collect();
-        assert_eq!(lines.len(), 5);
-    }
-
-    #[test]
     fn test_scale() {
         let pattern = slowcat(
             vec![
@@ -730,7 +732,7 @@ mod tests {
 
         let scaled_pattern = scale(
             pattern,
-            slowcat(vec![cycled(Scale::CMajor), cycled(Scale::CMinor)].into_iter()),
+            slowcat(vec![cycled(Scale::Major), cycled(Scale::Minor)].into_iter()),
         );
 
         assert_eq!(
