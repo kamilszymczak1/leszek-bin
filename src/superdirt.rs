@@ -7,7 +7,9 @@ use std::net::UdpSocket;
 
 use rosc::{self, OscBundle, OscMessage, OscPacket, OscType};
 
-use crate::pattern::{Event, Pattern, Segment, Time};
+use crate::pattern::{Event, Pattern};
+use crate::segment::Segment;
+use crate::time::Time;
 
 struct ServerContext {
     start_time: SystemTime,

@@ -81,7 +81,7 @@ fn parse_call(mut pairs: Pairs<Rule>) -> Result<Expr> {
 mod test {
     use crate::lang::*;
     use crate::parser::*;
-    use crate::pattern::frac;
+    use crate::time::frac;
 
     #[test]
     fn test_parse() {

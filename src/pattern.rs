@@ -1,218 +1,14 @@
 use num::BigRational;
-use num::rational::Ratio;
-use num::{self, BigInt};
-use num_traits::cast::ToPrimitive;
 use rand::Rng;
 use rosc::OscType;
 
 use crate::note::Note;
 use crate::scale::{Scale, map_note};
-
-use std::cmp::{max, min};
-use std::ops::{Add, Div, Mul, Sub};
+use crate::segment::{self, Segment, cycle_segment_from_time};
+use crate::time::{Time, frac};
 use std::rc::Rc;
 
 use crate::superdirt::ControlMessage;
-
-pub fn frac(a: i64, b: i64) -> BigRational {
-    Ratio::new(BigInt::from(a), BigInt::from(b))
-}
-
-#[derive(Eq, PartialEq, Clone, PartialOrd, Ord)]
-pub struct Time(pub num::BigRational);
-
-impl Time {
-    pub fn new(a: i64, b: i64) -> Self {
-        Time(frac(a, b))
-    }
-
-    pub fn cycle_index(&self) -> u32 {
-        let bigint: BigInt = self.0.floor().to_integer();
-        bigint.to_u32().unwrap()
-    }
-
-    pub fn cycle_start(&self) -> Time {
-        Time(self.0.floor())
-    }
-
-    pub fn cycle_segment(&self) -> Segment {
-        Segment::new(self.cycle_start(), Time(self.cycle_start().0 + frac(1, 1)))
-    }
-
-    pub fn from_cycle_index(cycle: u32) -> Self {
-        Time(BigRational::from(BigInt::from(cycle)))
-    }
-}
-
-impl std::fmt::Display for Time {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl std::fmt::Debug for Time {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Time({})", self.0)
-    }
-}
-
-impl Add<i64> for Time {
-    type Output = Time;
-
-    fn add(self, rhs: i64) -> Self::Output {
-        Time(self.0 + frac(rhs, 1))
-    }
-}
-
-impl Add<BigRational> for Time {
-    type Output = Time;
-
-    fn add(self, rhs: BigRational) -> Self::Output {
-        Time(self.0 + rhs)
-    }
-}
-
-impl Add<Time> for Time {
-    type Output = Time;
-
-    fn add(self, rhs: Time) -> Self::Output {
-        Time(self.0 + rhs.0)
-    }
-}
-
-impl Sub<Time> for Time {
-    type Output = Time;
-
-    fn sub(self, rhs: Time) -> Self::Output {
-        Time(self.0 - rhs.0)
-    }
-}
-
-impl Mul<i64> for Time {
-    type Output = Time;
-
-    fn mul(self, rhs: i64) -> Self::Output {
-        Time(self.0 * frac(rhs, 1))
-    }
-}
-
-impl Mul<BigRational> for Time {
-    type Output = Time;
-
-    fn mul(self, rhs: BigRational) -> Self::Output {
-        Time(self.0 * rhs)
-    }
-}
-
-impl Div<i64> for Time {
-    type Output = Time;
-
-    fn div(self, rhs: i64) -> Self::Output {
-        Time(self.0 / frac(rhs, 1))
-    }
-}
-
-impl Div<BigRational> for Time {
-    type Output = Time;
-
-    fn div(self, rhs: BigRational) -> Self::Output {
-        Time(self.0 / rhs)
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Segment {
-    pub start: Time,
-    pub end: Time,
-}
-
-impl Add<Time> for Segment {
-    type Output = Segment;
-
-    fn add(self, rhs: Time) -> Self::Output {
-        Segment::new(self.start + rhs.clone(), self.end + rhs)
-    }
-}
-
-impl Sub<Time> for Segment {
-    type Output = Segment;
-
-    fn sub(self, rhs: Time) -> Self::Output {
-        Segment::new(self.start - rhs.clone(), self.end - rhs)
-    }
-}
-
-impl Segment {
-    pub fn new(start: Time, end: Time) -> Self {
-        Segment { start, end }
-    }
-
-    // Split segment on the boundaries between cycles. E.g splitting [0.5, 2.8) results in
-    // [[0.5, 1), [1, 2), [2, 2.8)]
-    pub fn split_on_cycles(&self) -> Vec<Segment> {
-        let start_cycle = self.start.cycle_index() + 1;
-        let end_cycle = self.end.cycle_index();
-
-        if end_cycle < start_cycle {
-            return vec![self.clone()];
-        }
-
-        let mut result: Vec<Segment> = vec![];
-
-        let left_full_time = Time::from_cycle_index(start_cycle);
-        if self.start != left_full_time {
-            result.push(Segment::new(self.start.clone(), left_full_time));
-        }
-
-        for cycle in start_cycle..end_cycle {
-            let cycle_segment = Segment::new(
-                Time::from_cycle_index(cycle),
-                Time::from_cycle_index(cycle + 1),
-            );
-            result.push(cycle_segment);
-        }
-
-        let right_full_time = Time::from_cycle_index(end_cycle);
-        if self.end != right_full_time {
-            result.push(Segment::new(right_full_time, self.end.clone()));
-        }
-
-        result
-    }
-
-    pub fn duration(self) -> BigRational {
-        self.end.0 - self.start.0
-    }
-
-    pub fn scaled(self, factor: BigRational) -> Segment {
-        Segment::new(
-            Time(self.start.0 * factor.clone()),
-            Time(self.end.0 * factor),
-        )
-    }
-
-    pub fn intersection(&self, other: &Segment) -> Option<Segment> {
-        let start = max(self.start.clone(), other.start.clone());
-        let end = min(self.end.clone(), other.end.clone());
-        if start < end {
-            Some(Segment::new(start, end))
-        } else {
-            None
-        }
-    }
-}
-
-impl std::fmt::Display for Segment {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}, {})", self.start, self.end)
-    }
-}
-
-impl std::fmt::Debug for Segment {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}, {})", self.start, self.end)
-    }
-}
 
 #[derive(PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct Part {
@@ -224,7 +20,6 @@ impl Part {
     fn new(part: Segment, whole: Option<Segment>) -> Part {
         Part { part, whole }
     }
-
     fn scaled(self, factor: BigRational) -> Part {
         Part::new(
             self.part.scaled(factor.clone()),
@@ -327,7 +122,7 @@ pub fn cycled<T: Clone>(a: T) -> impl Pattern<T> {
         let a = a.clone();
         segment.split_on_cycles().into_iter().map(move |cycle| {
             Event::new(
-                Part::new(cycle.clone(), Some(cycle.start.cycle_segment())),
+                Part::new(cycle.clone(), Some(cycle_segment_from_time(&cycle.start))),
                 a.clone(),
             )
         })
@@ -626,10 +421,12 @@ mod tests {
     use crate::{
         note::Note,
         pattern::{
-            Pattern, Segment, Time, cycled, display_pattern, empty, fastcat, frac, in_parallel,
+            Pattern, Segment, Time, cycled, display_pattern, empty, fastcat, in_parallel,
             random_slowcat, scale, slowcat, speed_up, structure,
         },
         scale::Scale,
+        segment::cycle_segment_from_time,
+        time::frac,
     };
 
     #[test]
@@ -650,7 +447,7 @@ mod tests {
         assert_eq!(Time::new(85, 9).cycle_start(), Time::new(9, 1));
         assert_eq!(Time::new(85, 9).cycle_index(), 9);
         assert_eq!(
-            Time::new(13, 2).cycle_segment(),
+            cycle_segment_from_time(&Time::new(13, 2)),
             Segment::new(Time::new(6, 1), Time::new(7, 1))
         );
     }
