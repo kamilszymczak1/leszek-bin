@@ -1,3 +1,9 @@
+//! Time segment (interval) representation for musical patterns.
+//!
+//! This module provides a `Segment` type representing a half-open time interval
+//! `[start, end)`. Segments are fundamental for scheduling events in patterns,
+//! determining when notes should play, and splitting patterns across cycle boundaries.
+
 use std::{
     cmp::{max, min},
     ops::{Add, Sub},
@@ -7,12 +13,27 @@ use num::{BigInt, BigRational};
 
 use crate::time::Time;
 
+/// A half-open time interval `[start, end)`.
+///
+/// Represents a span of time where `start` is inclusive and `end` is exclusive.
+/// Used to define when pattern events occur and to query patterns for events
+/// within specific time ranges.
+///
+/// # Examples
+///
+/// | Segment       | Meaning                                    |
+/// |---------------|--------------------------------------------|
+/// | `[0, 1)`      | The first cycle (cycle 0)                  |
+/// | `[1, 2)`      | The second cycle (cycle 1)                 |
+/// | `[0.5, 1.5)`  | Half of cycle 0 through half of cycle 1    |
+/// | `[0, 0.25)`   | The first quarter of cycle 0               |
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Segment {
     pub start: Time,
     pub end: Time,
 }
 
+/// Shifts the segment forward in time by the given amount.
 impl Add<Time> for Segment {
     type Output = Segment;
 
@@ -21,6 +42,7 @@ impl Add<Time> for Segment {
     }
 }
 
+/// Shifts the segment backward in time by the given amount.
 impl Sub<Time> for Segment {
     type Output = Segment;
 
@@ -30,12 +52,22 @@ impl Sub<Time> for Segment {
 }
 
 impl Segment {
+    /// Creates a new segment with the given start and end times.
     pub fn new(start: Time, end: Time) -> Self {
         Segment { start, end }
     }
 
-    // Split segment on the boundaries between cycles. E.g splitting [0.5, 2.8) results in
-    // [[0.5, 1), [1, 2), [2, 2.8)]
+    /// Splits the segment at cycle boundaries.
+    ///
+    /// This is useful for processing patterns that span multiple cycles,
+    /// as each cycle can be handled independently.
+    ///
+    /// # Example
+    ///
+    /// Splitting `[0.5, 2.8)` results in:
+    /// - `[0.5, 1.0)` — remainder of cycle 0
+    /// - `[1.0, 2.0)` — full cycle 1
+    /// - `[2.0, 2.8)` — beginning of cycle 2
     pub fn split_on_cycles(&self) -> Vec<Segment> {
         let start_cycle = self.start.cycle_index() + 1;
         let end_cycle = self.end.cycle_index();
@@ -67,10 +99,14 @@ impl Segment {
         result
     }
 
+    /// Returns the duration of the segment (end - start).
     pub fn duration(self) -> BigRational {
         self.end.0 - self.start.0
     }
 
+    /// Returns a new segment with start and end scaled by the given factor.
+    ///
+    /// Used for time stretching operations like `slow` and `fast`.
     pub fn scaled(self, factor: BigRational) -> Segment {
         Segment::new(
             Time(self.start.0 * factor.clone()),
@@ -78,6 +114,9 @@ impl Segment {
         )
     }
 
+    /// Returns the intersection of two segments, if they overlap.
+    ///
+    /// Returns `None` if the segments don't overlap.
     pub fn intersection(&self, other: &Segment) -> Option<Segment> {
         let start = max(self.start.clone(), other.start.clone());
         let end = min(self.end.clone(), other.end.clone());
@@ -101,6 +140,9 @@ impl std::fmt::Debug for Segment {
     }
 }
 
+/// Returns the full cycle segment containing the given time.
+///
+/// For example, if `t` is 1.5, returns the segment `[1, 2)`.
 pub fn cycle_segment_from_time(t: &Time) -> Segment {
     Segment::new(
         t.cycle_start(),
