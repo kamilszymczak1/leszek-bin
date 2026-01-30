@@ -1,12 +1,16 @@
 use std::collections::HashMap;
 
 use num::BigRational;
+use num::FromPrimitive;
 
 use rosc::OscType;
 
-use crate::pattern;
+use crate::note::Note;
+use crate::pattern::{self, fastcat, filter_map_output, in_parallel, scale, speed_up};
 use crate::pattern::{BoxPattern, Pattern, slowcat, map_output, filter_output};
 use crate::superdirt::ControlMessage;
+
+use num::ToPrimitive;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -112,25 +116,96 @@ fn as_control(val: Value) -> Option<ControlMessage> {
     }
 }
 
+fn as_number(val: Value) -> Option<BigRational> {
+    if let Value::Number(num) = val {
+        Some(num)
+    } else {
+        None
+    }
+}
+
 fn compute_external(name: String, mut args: Vec<Value>) -> Option<Value> {
-    let mut arg1 = move || -> Option<Value> {
-        if args.len() == 1 {
-            Some(args.pop().unwrap())
-        } else {
-            None
+    fn arg1(args: Vec<Value>) -> Option<Value> {
+        match &args[..] {
+            [a] => {
+                Some(a.clone())
+            },
+            _ => None
         }
-    };
+    }
+
+    fn arg2(args: Vec<Value>) -> Option<(Value, Value)> {
+        match &args[..] {
+            [a1, a2] => {
+                Some((a1.clone(), a2.clone()))
+            },
+            _ => None
+        }
+    }
+
+    fn key(key: &'static str, args: Vec<Value>) -> Option<Value> {
+        let pat = to_pattern(arg1(args)?);
+        let sound_pat = filter_output(map_output(pat, |val: Value| -> Option<OscType> { Some(OscType::String(as_atom(val)?)) }));
+        let output_pat = map_output(pattern::keyed(key, sound_pat), Value::Message).boxed();
+        Some(Value::Pattern(output_pat))
+    }
+
+    fn key_number(key: &'static str, args: Vec<Value>) -> Option<Value> {
+        let pat = to_pattern(arg1(args)?);
+        let sound_pat = filter_output(map_output(pat, |val: Value| -> Option<OscType> { Some(OscType::Float(as_number(val)?.to_f32().unwrap())) }));
+        let output_pat = map_output(pattern::keyed(key, sound_pat), Value::Message).boxed();
+        Some(Value::Pattern(output_pat))
+    }
 
     match &name as &str {
         "slowcat" => {
-            Some(Value::Pattern(slowcat(get_vector(arg1()?)?.into_iter().map(to_pattern)).boxed()))
+            Some(Value::Pattern(slowcat(get_vector(arg1(args)?)?.into_iter().map(to_pattern)).boxed()))
         },
-        "sound" => {
-            let pat = as_pattern(arg1()?)?;
-            let sound_pat = filter_output(map_output(pat, |val: Value| -> Option<OscType> { Some(OscType::String(as_atom(val)?)) }));
-            let output_pat = map_output(pattern::keyed("s", sound_pat), Value::Message).boxed();
-            Some(Value::Pattern(output_pat))
+        "fastcat" => {
+            Some(Value::Pattern(fastcat(get_vector(arg1(args)?)?.into_iter().map(to_pattern)).boxed()))
+        },
+        "par" => {
+            Some(Value::Pattern(in_parallel(get_vector(arg1(args)?)?.into_iter().map(to_pattern)).boxed()))
         }
+        "sound" => {
+            key("s", args)
+        },
+        "fast" => {
+            let (rate, pat) = arg2(args)?;
+            let out_pat = speed_up(
+                as_pattern(pat)?,
+                as_number(rate)?,
+            );
+            Some(Value::Pattern(out_pat.boxed()))
+        }
+        "slow" => {
+            let (rate, pat) = arg2(args)?;
+            let out_pat = speed_up(
+                as_pattern(pat)?,
+                pattern::frac(1, 1) / as_number(rate)?,
+            );
+            Some(Value::Pattern(out_pat.boxed()))
+        }
+        "merge" => {
+            let (pat0, pat1) = arg2(args)?;
+            let p0 = filter_map_output(to_pattern(pat0), as_control);
+            let p1 = filter_map_output(to_pattern(pat1), as_control);
+            Some(Value::Pattern(map_output(pattern::merge(p0, p1), Value::Message).boxed()))
+        },
+        "scale" => {
+            let (scale_pat, note_pat) = arg2(args)?;
+            let scale_pat = filter_map_output(to_pattern(scale_pat), |val| as_atom(val)?.try_into().ok());
+            let note_pat = filter_map_output(
+                filter_map_output(to_pattern(note_pat), as_number), 
+                |num| { Some(Note::new(num.floor().to_i8()?)) }
+                );
+            Some(Value::Pattern(filter_map_output(pattern::scale(note_pat, scale_pat), |note| Some(Value::Number(BigRational::from_i8(note.value())?))).boxed()))
+        },
+        "velocity" => key_number("velocity", args),
+        "clip" => key_number("clip", args),
+        "delay" => key_number("delay", args),
+        "room" => key_number("room", args),
+        "n" => key_number("n", args),
         _ => { todo!() }
     }
 }
@@ -170,6 +245,7 @@ pub fn eval_control_pattern(expr: Expr) -> Option<BoxPattern<ControlMessage>> {
 
 pub fn eval_pattern(expr: Expr) -> Option<BoxPattern<Value>> {
     let value = eval_with(&mut Environment::new(), expr)?;
+    dbg!(value.clone());
     if let Value::Pattern(pat) = value {
         return Some(pat)
     }
@@ -221,7 +297,24 @@ fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
                 "cat" => { Some(wrap_f1(String::from("slowcat"))) },
                 "fc" => { Some(wrap_f1(String::from("fastcat"))) },
                 "s" => { Some(wrap_f1(String::from("sound"))) },
-                _ => { env.variable_map.get(&name).cloned() }
+                "n" => { Some(wrap_f1(String::from("n"))) }
+                "par" => { Some(wrap_f1(String::from("par"))) }
+                "fast" => { Some(wrap_f2(String::from("fast"))) }
+                "slow" => { Some(wrap_f2(String::from("slow"))) }
+                "add" => { Some(wrap_f2(String::from("add"))) }
+                "merge" => { Some(wrap_f2(String::from("merge"))) }
+                "velocity" => { Some(wrap_f1(String::from("velocity"))) }
+                "clip" => { Some(wrap_f1(String::from("clip"))) }
+                "delay" => { Some(wrap_f1(String::from("delay"))) }
+                "room" => { Some(wrap_f1(String::from("room"))) }
+                "scale" => { Some(wrap_f2(String::from("scale"))) }
+                _ => { 
+                    let res = env.variable_map.get(&name).cloned();
+                    if res.is_none() {
+                        println!("ERROR: variable {} not found", name);
+                    }
+                    res
+                }
             }
         }
     }

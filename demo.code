@@ -1,0 +1,4 @@
+par([
+    n(scale(slow(2, cat(["cminor", "cmajor"])), fc([0, 3, 2, 1])))
+        .s("arpy")
+])

@@ -22,6 +22,18 @@ pub fn map_note(scale : &Scale, note : Note) -> Note {
     Note::new(octave * 12 + mapping[degree as usize])
 }
 
+impl TryInto<Scale> for String {
+    type Error = ();
+
+    fn try_into(self) -> Result<Scale, Self::Error> {
+        match self.as_str() {
+            "cminor" => Ok(Scale::CMinor),
+            "cmajor" => Ok(Scale::CMajor),
+            _ => Err(())
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
 
