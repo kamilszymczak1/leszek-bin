@@ -522,15 +522,16 @@ where
     }
  }
 
-pub fn scale<P>(pattern : P, scale : &Scale) -> impl Pattern<Note>
-where P : Pattern<Note>
+pub fn scale<P, Q>(pattern : P, scales: Q) -> impl Pattern<Note>
+where P: Pattern<Note>, Q: Pattern<Scale>
 {
-    move |segment: Segment| {
-        pattern.query(segment).map(move |event| {
-            let mapped_value = map_note(&scale, event.value);
-            Event::new(event.part, mapped_value)
-        })
-    }
+    combine(
+        pattern,
+        scales,
+        |note, scale| {
+            map_note(&scale, note)
+        }
+    )
 }
 
 pub fn empty<T>() -> impl Pattern<T>
@@ -780,12 +781,15 @@ mod tests {
             cycled(Note::new(4)),
         ].into_iter());
 
-        let scaled_pattern = scale(pattern, &Scale::CMajor);
+        let scaled_pattern = scale(pattern, slowcat(vec![
+            cycled(Scale::CMajor),
+            cycled(Scale::CMinor),
+        ].into_iter()));
 
         assert_eq!(
             display_pattern(&scaled_pattern),
             "[0, 1) | Note(0)\n\
-             [1, 2) | Note(4)\n\
+             [1, 2) | Note(3)\n\
              [2, 3) | Note(7)\n\
              [3, 4) | Note(0)\n\
              [4, 5) | Note(4)\n"
