@@ -6,7 +6,7 @@ use num::FromPrimitive;
 use rosc::OscType;
 
 use crate::note::Note;
-use crate::pattern::{self, fastcat, filter_map_output, in_parallel, scale, speed_up};
+use crate::pattern::{self, fastcat, filter_map_output, in_parallel, speed_up, structure};
 use crate::pattern::{BoxPattern, Pattern, slowcat, map_output, filter_output};
 use crate::superdirt::ControlMessage;
 
@@ -173,7 +173,7 @@ fn compute_external(name: String, mut args: Vec<Value>) -> Option<Value> {
         "fast" => {
             let (rate, pat) = arg2(args)?;
             let out_pat = speed_up(
-                as_pattern(pat)?,
+                to_pattern(pat),
                 as_number(rate)?,
             );
             Some(Value::Pattern(out_pat.boxed()))
@@ -201,6 +201,12 @@ fn compute_external(name: String, mut args: Vec<Value>) -> Option<Value> {
                 );
             Some(Value::Pattern(filter_map_output(pattern::scale(note_pat, scale_pat), |note| Some(Value::Number(BigRational::from_i8(note.value())?))).boxed()))
         },
+        "struct" => {
+            let (arg0, arg1) = arg2(args)?;
+            let pat = to_pattern(arg0);
+            let filter_pat = to_pattern(arg1);
+            Some(Value::Pattern(pattern::structure(pat, map_output(filter_pat, |_| ())).boxed()))
+        },
         "velocity" => key_number("velocity", args),
         "clip" => key_number("clip", args),
         "delay" => key_number("delay", args),
@@ -210,17 +216,16 @@ fn compute_external(name: String, mut args: Vec<Value>) -> Option<Value> {
     }
 }
 
-fn wrap_f1(name: String) -> Value {
-    let a = String::from("a");
+fn wrap_f1(fresh_var0: String, name: String) -> Value {
+    let a = fresh_var0;
     Value::Lambda(a.clone(),
         Expr::External(name, vec![Expr::Var(a)])
     )
 }
 
-
-fn wrap_f2(name: String) -> Value {
-    let a = String::from("a");
-    let b = String::from("b");
+fn wrap_f2(fresh_var0: String, fresh_var1: String, name: String) -> Value {
+    let a = fresh_var0;
+    let b = fresh_var1;
     Value::Lambda(a.clone(),
         Expr::Lambda(b.clone(),
             Box::new(Expr::External(name, vec![Expr::Var(a), Expr::Var(b)]))
@@ -230,12 +235,13 @@ fn wrap_f2(name: String) -> Value {
 
 #[derive(Debug, Clone)]
 pub struct Environment {
-    variable_map: HashMap<String, Value>
+    fresh_counter: u16,
+    variable_map: HashMap<String, Value>,
 }
 
 impl Environment {
     fn new() -> Self {
-        Self { variable_map: HashMap::new() }
+        Self { fresh_counter: 0, variable_map: HashMap::new() }
     }
 }
 
@@ -254,6 +260,13 @@ pub fn eval_pattern(expr: Expr) -> Option<BoxPattern<Value>> {
 }
 
 fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
+    dbg!(&env, expr.clone());
+    let mut get_fresh_var = || {
+        let fresh_var = String::from(format!("fresh{}", env.fresh_counter));
+        env.fresh_counter += 1;
+        fresh_var
+    };
+
     match expr {
         Expr::External(name, args) => {
             let arg_values: Vec<Value> = 
@@ -270,9 +283,10 @@ fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
                     Value::Lambda(name, subexpr) => { Some((name, subexpr)) },
                     _ => None,
                 }?;
-            let old_value = env.variable_map.remove(&name);
             let arg_value = eval_with(env, *arg)?;
-            env.variable_map.insert(name.clone(), arg_value);
+            dbg!("apply", env.clone(), name.clone(), subexpr.clone(), arg_value.clone());
+            let old_value = env.variable_map.insert(name.clone(), arg_value);
+
             let result = eval_with(env, subexpr)?;
             if let Some(old_value) = old_value {
                 env.variable_map.insert(name, old_value);
@@ -293,21 +307,22 @@ fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
         }
         Expr::Var(name) => {
             match &name as &str {
-                "slowcat" => { Some(wrap_f1(String::from("slowcat"))) },
-                "cat" => { Some(wrap_f1(String::from("slowcat"))) },
-                "fc" => { Some(wrap_f1(String::from("fastcat"))) },
-                "s" => { Some(wrap_f1(String::from("sound"))) },
-                "n" => { Some(wrap_f1(String::from("n"))) }
-                "par" => { Some(wrap_f1(String::from("par"))) }
-                "fast" => { Some(wrap_f2(String::from("fast"))) }
-                "slow" => { Some(wrap_f2(String::from("slow"))) }
-                "add" => { Some(wrap_f2(String::from("add"))) }
-                "merge" => { Some(wrap_f2(String::from("merge"))) }
-                "velocity" => { Some(wrap_f1(String::from("velocity"))) }
-                "clip" => { Some(wrap_f1(String::from("clip"))) }
-                "delay" => { Some(wrap_f1(String::from("delay"))) }
-                "room" => { Some(wrap_f1(String::from("room"))) }
-                "scale" => { Some(wrap_f2(String::from("scale"))) }
+                "slowcat" => { Some(wrap_f1(get_fresh_var(), String::from("slowcat"))) },
+                "cat" => { Some(wrap_f1(get_fresh_var(), String::from("slowcat"))) },
+                "fc" => { Some(wrap_f1(get_fresh_var(), String::from("fastcat"))) },
+                "s" => { Some(wrap_f1(get_fresh_var(), String::from("sound"))) },
+                "n" => { Some(wrap_f1(get_fresh_var(), String::from("n"))) }
+                "par" => { Some(wrap_f1(get_fresh_var(), String::from("par"))) }
+                "fast" => { Some(wrap_f2(get_fresh_var(), get_fresh_var(), String::from("fast"))) }
+                "slow" => { Some(wrap_f2(get_fresh_var(), get_fresh_var(), String::from("slow"))) }
+                "add" => { Some(wrap_f2(get_fresh_var(), get_fresh_var(), String::from("add"))) }
+                "merge" => { Some(wrap_f2(get_fresh_var(), get_fresh_var(), String::from("merge"))) }
+                "velocity" => { Some(wrap_f1(get_fresh_var(), String::from("velocity"))) }
+                "clip" => { Some(wrap_f1(get_fresh_var(), String::from("clip"))) }
+                "delay" => { Some(wrap_f1(get_fresh_var(), String::from("delay"))) }
+                "room" => { Some(wrap_f1(get_fresh_var(), String::from("room"))) }
+                "scale" => { Some(wrap_f2(get_fresh_var(), get_fresh_var(), String::from("scale"))) }
+                "struct" => { Some(wrap_f2(get_fresh_var(), get_fresh_var(), String::from("struct"))) }
                 _ => { 
                     let res = env.variable_map.get(&name).cloned();
                     if res.is_none() {

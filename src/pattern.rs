@@ -606,7 +606,7 @@ where
     P0: Pattern<ControlMessage>,
     P1: Pattern<ControlMessage>,
 {
-    combine(pattern0, pattern1, |msg0, msg1| {
+    combine_left(pattern0, pattern1, |msg0, msg1| {
         let mut msg = msg0.clone();
         msg.merge(&mut msg1.clone());
         msg

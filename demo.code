@@ -1,4 +1,11 @@
-par([
-    n(scale(slow(2, cat(["cminor", "cmajor"])), fc([0, 3, 2, 1])))
-        .s("arpy")
-])
+n(
+    slow(2, struct(
+        scale(
+            cat(["cminor", "cmajor"]),
+            fast(3, fc([0, 8, 4, 6, 9, 2, 0, 2]))
+        ),
+        fast(8, "x")
+    ))
+)
+.s("superpiano")
+.velocity(fast(8, fast(2, cat([0.9, 0.6, 0.7]))))
