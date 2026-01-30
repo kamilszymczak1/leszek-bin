@@ -4,7 +4,7 @@ use rosc::OscType;
 
 use crate::note::Note;
 use crate::scale::{Scale, map_note};
-use crate::segment::{self, Segment, cycle_segment_from_time};
+use crate::segment::{Segment, cycle_segment_from_time};
 use crate::time::{Time, frac};
 use std::rc::Rc;
 
@@ -53,10 +53,7 @@ impl<T> Event<T> {
 
     fn scaled(self, factor: BigRational) -> Event<T> {
         Event::new(
-            Part::new(
-                self.part.part.scaled(factor.clone()),
-                self.part.whole.map(|w| w.scaled(factor.clone())),
-            ),
+            self.part.scaled(factor),
             self.value,
         )
     }
@@ -454,8 +451,15 @@ mod tests {
 
     #[test]
     fn test_cycled() {
-        let res = cycled(0).query(Segment::new(Time::new(1, 2), Time::new(5, 2)));
-        // TODO
+        let pattern = cycled(42);
+        assert_eq!(
+            display_pattern(&pattern),
+            "[0, 1) | 42\n\
+             [1, 2) | 42\n\
+             [2, 3) | 42\n\
+             [3, 4) | 42\n\
+             [4, 5) | 42\n"
+        );
     }
 
     #[test]
