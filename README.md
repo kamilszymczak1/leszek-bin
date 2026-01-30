@@ -2,6 +2,10 @@
 
 A simple Rust app for creating music.
 
+The project's core concepts are based on 
+[this](https://zenodo.org/records/1193251#.XCUCMcbgqV4) 
+paper.
+
 ## Authors
 
 - Hubert Wasilewski @hubertwas
