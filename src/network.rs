@@ -1,7 +1,6 @@
 //! Network module for collaborative pattern editing.
 //!
 //! This module provides shared types for client-server communication.
-//! The actual client and server implementations are in the `client` and `server` modules.
 
 use serde::{Deserialize, Serialize};
 
