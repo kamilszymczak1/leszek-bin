@@ -11,7 +11,30 @@ use crate::pattern::{BoxPattern, Pattern, filter_output, map_output, slowcat};
 use crate::superdirt::ControlMessage;
 use crate::time;
 
+use std::collections::HashSet;
+
+use std::sync::LazyLock;
+
 use num::ToPrimitive;
+
+const EXTERNAL_ARG1: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    HashSet::from([
+        "cat",
+        "fc",
+        "s",
+        "n",
+        "par",
+        "velocity",
+        "clip",
+        "delay",
+        "room",
+        "modamp",
+        "accelerate",
+    ])
+});
+
+const EXTERNAL_ARG2: LazyLock<HashSet<&'static str>> =
+    LazyLock::new(|| HashSet::from(["scale", "struct", "fast", "slow", "add", "merge"]));
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -160,16 +183,16 @@ fn compute_external(name: String, args: Vec<Value>) -> Option<Value> {
     }
 
     match &name as &str {
-        "slowcat" => Some(Value::Pattern(
+        "cat" => Some(Value::Pattern(
             slowcat(get_vector(arg1(args)?)?.into_iter().map(to_pattern)).boxed(),
         )),
-        "fastcat" => Some(Value::Pattern(
+        "fc" => Some(Value::Pattern(
             fastcat(get_vector(arg1(args)?)?.into_iter().map(to_pattern)).boxed(),
         )),
         "par" => Some(Value::Pattern(
             in_parallel(get_vector(arg1(args)?)?.into_iter().map(to_pattern)).boxed(),
         )),
-        "sound" => key("s", args),
+        "s" => key("s", args),
         "fast" => {
             let (rate, pat) = arg2(args)?;
             let out_pat = speed_up(to_pattern(pat), as_number(rate)?);
@@ -220,13 +243,16 @@ fn compute_external(name: String, args: Vec<Value>) -> Option<Value> {
                 map_output(pat_result, Value::Number).boxed(),
             ))
         }
+        "modamp" => key_number("modamp", args),
+        "accelerate" => key_number("accelerate", args),
         "velocity" => key_number("velocity", args),
         "clip" => key_number("clip", args),
         "delay" => key_number("delay", args),
         "room" => key_number("room", args),
         "n" => key_number("n", args),
         _ => {
-            todo!()
+            println!("invalid external {}", name);
+            None
         }
     }
 }
@@ -315,55 +341,19 @@ fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
                 .map(|expr| eval_with(env, expr))
                 .collect::<Option<_>>()?,
         )),
-        Expr::Var(name) => match &name as &str {
-            "slowcat" => Some(wrap_f1(get_fresh_var(), String::from("slowcat"))),
-            "cat" => Some(wrap_f1(get_fresh_var(), String::from("slowcat"))),
-            "fc" => Some(wrap_f1(get_fresh_var(), String::from("fastcat"))),
-            "s" => Some(wrap_f1(get_fresh_var(), String::from("sound"))),
-            "n" => Some(wrap_f1(get_fresh_var(), String::from("n"))),
-            "par" => Some(wrap_f1(get_fresh_var(), String::from("par"))),
-            "fast" => Some(wrap_f2(
-                get_fresh_var(),
-                get_fresh_var(),
-                String::from("fast"),
-            )),
-            "slow" => Some(wrap_f2(
-                get_fresh_var(),
-                get_fresh_var(),
-                String::from("slow"),
-            )),
-            "add" => Some(wrap_f2(
-                get_fresh_var(),
-                get_fresh_var(),
-                String::from("add"),
-            )),
-            "merge" => Some(wrap_f2(
-                get_fresh_var(),
-                get_fresh_var(),
-                String::from("merge"),
-            )),
-            "velocity" => Some(wrap_f1(get_fresh_var(), String::from("velocity"))),
-            "clip" => Some(wrap_f1(get_fresh_var(), String::from("clip"))),
-            "delay" => Some(wrap_f1(get_fresh_var(), String::from("delay"))),
-            "room" => Some(wrap_f1(get_fresh_var(), String::from("room"))),
-            "scale" => Some(wrap_f2(
-                get_fresh_var(),
-                get_fresh_var(),
-                String::from("scale"),
-            )),
-            "struct" => Some(wrap_f2(
-                get_fresh_var(),
-                get_fresh_var(),
-                String::from("struct"),
-            )),
-            _ => {
+        Expr::Var(name) => {
+            if EXTERNAL_ARG1.contains(name.as_str()) {
+                Some(wrap_f1(get_fresh_var(), name))
+            } else if EXTERNAL_ARG2.contains(name.as_str()) {
+                Some(wrap_f2(get_fresh_var(), get_fresh_var(), name))
+            } else {
                 let res = env.variable_map.get(&name).cloned();
                 if res.is_none() {
                     println!("ERROR: variable {} not found", name);
                 }
                 res
             }
-        },
+        }
     }
 }
 
