@@ -114,7 +114,7 @@ where
     F: Fn() -> Option<Vec<BoxPattern<ControlMessage>>>,
 {
     let cps = 1.0;
-    let mut ctx = ServerContext::new(cps);
+    let ctx = ServerContext::new(cps);
     let mut sent_until = Time::new(0, 1);
     let mut pats = load_patterns().expect("Failed to load initial patterns");
     let mut bytes = Vec::new();
