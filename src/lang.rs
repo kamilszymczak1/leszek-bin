@@ -464,7 +464,7 @@ fn eval_with(env: &mut Environment, expr: Expr) -> Result<Value> {
                 Ok(wrap_f2(get_fresh_var(), get_fresh_var(), name))
             } else {
                 let res = env.variable_map.get(&name).cloned();
-                res.ok_or_else(|| anyhow!("variable not {} found", name))
+                res.ok_or_else(|| anyhow!("variable {} not found", name))
             }
         }
     }
