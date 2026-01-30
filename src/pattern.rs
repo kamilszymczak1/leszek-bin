@@ -3,6 +3,8 @@ use num::{self};
 use rand::Rng;
 use rosc::OscType;
 
+use anyhow::Result;
+
 use crate::note::Note;
 use crate::scale::{Scale, map_note};
 use crate::segment::{Segment, cycle_segment_from_time};
@@ -385,6 +387,22 @@ where
     F: Fn(T) -> Option<U> + Clone,
 {
     filter_output(map_output(pat, f))
+}
+
+pub fn filter_map_result_output<T, U, F, P>(pat: P, f: F) -> impl Pattern<U>
+where
+    P: Pattern<T>,
+    F: Fn(T) -> Result<U> + Clone,
+{
+    filter_output(map_output(pat, move |input| {
+        match f(input) {
+            Ok(output) => Some(output),
+            Err(e) => {
+                eprintln!("error in pattern while applying fallible function: {}", e);
+                None
+            }
+        }
+    }))
 }
 
 pub fn scale<P, Q>(pattern: P, scales: Q) -> impl Pattern<Note>

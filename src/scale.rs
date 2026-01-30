@@ -4,6 +4,8 @@
 //! (e.g., 0, 1, 2, 3...) into actual semitone offsets, allowing patterns
 //! to be written in terms of scale positions rather than raw note values.
 
+use anyhow::bail;
+
 use crate::note::Note;
 
 /// Represents a musical scale rooted at C.
@@ -65,7 +67,7 @@ pub fn map_note(scale: &Scale, note: Note) -> Note {
 }
 
 impl TryInto<Scale> for String {
-    type Error = ();
+    type Error = anyhow::Error;
 
     /// Parses a scale name from a string.
     ///
@@ -74,7 +76,7 @@ impl TryInto<Scale> for String {
         match self.as_str() {
             "cminor" => Ok(Scale::CMinor),
             "cmajor" => Ok(Scale::CMajor),
-            _ => Err(()),
+            _ => bail!("unknown scale '{}'", self),
         }
     }
 }

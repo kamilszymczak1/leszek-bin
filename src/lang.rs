@@ -1,12 +1,15 @@
 use std::collections::HashMap;
 
+use anyhow::Context;
 use num::BigRational;
 use num::FromPrimitive;
 
 use rosc::OscType;
 
+use anyhow::{anyhow, bail, Result};
+
 use crate::note::Note;
-use crate::pattern::{self, fastcat, filter_map_output, in_parallel, speed_up};
+use crate::pattern::{self, fastcat, filter_map_output, filter_map_result_output, in_parallel, speed_up};
 use crate::pattern::{BoxPattern, Pattern, filter_output, map_output, slowcat};
 use crate::superdirt::ControlMessage;
 use crate::time;
@@ -17,7 +20,7 @@ use std::sync::LazyLock;
 
 use num::ToPrimitive;
 
-const EXTERNAL_ARG1: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+static EXTERNAL_ARG1: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     HashSet::from([
         "cat",
         "fc",
@@ -33,7 +36,7 @@ const EXTERNAL_ARG1: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     ])
 });
 
-const EXTERNAL_ARG2: LazyLock<HashSet<&'static str>> =
+static EXTERNAL_ARG2: LazyLock<HashSet<&'static str>> =
     LazyLock::new(|| HashSet::from(["scale", "struct", "fast", "slow", "add", "merge"]));
 
 #[derive(Clone, Debug, PartialEq)]
@@ -101,6 +104,26 @@ impl std::fmt::Display for Value {
     }
 }
 
+fn _as_vector(val: Value) -> Option<Vec<Value>> {
+    val.try_into().ok()
+}
+
+fn _as_pattern(val: Value) -> Option<BoxPattern<Value>> {
+    val.try_into().ok()
+}
+
+fn as_atom(val: Value) -> Option<String> {
+    val.try_into().ok()
+}
+
+fn _as_control(val: Value) -> Option<ControlMessage> {
+    val.try_into().ok()
+}
+
+fn as_number(val: Value) -> Option<BigRational> {
+    val.try_into().ok()
+}
+
 fn to_pattern(value: Value) -> BoxPattern<Value> {
     if let Value::Pattern(pat) = value {
         pat
@@ -109,117 +132,165 @@ fn to_pattern(value: Value) -> BoxPattern<Value> {
     }
 }
 
-fn get_vector(val: Value) -> Option<Vec<Value>> {
-    if let Value::Vector(vec) = val {
-        Some(vec)
-    } else {
-        None
+fn try_pattern(val: Value) -> Result<BoxPattern<Value>> {
+    match val {
+        Value::Pattern(pat) => Ok(pat),
+        other => bail!("expected pattern, got {:?}", other),
     }
 }
 
-fn as_pattern(val: Value) -> Option<BoxPattern<Value>> {
-    if let Value::Pattern(pat) = val {
-        Some(pat)
-    } else {
-        None
+fn try_vector(val: Value) -> Result<Vec<Value>> {
+    match val {
+        Value::Vector(vec) => Ok(vec),
+        other => bail!("expected vector, got {:?}", other),
     }
 }
 
-fn as_atom(val: Value) -> Option<String> {
-    if let Value::Atom(str) = val {
-        Some(str)
-    } else {
-        None
+fn try_atom(val: Value) -> Result<String> {
+    match val {
+        Value::Atom(s) => Ok(s),
+        other => bail!("expected atom, got {:?}", other),
     }
 }
 
-fn as_control(val: Value) -> Option<ControlMessage> {
-    if let Value::Message(msg) = val {
-        Some(msg)
-    } else {
-        None
+fn try_control(val: Value) -> Result<ControlMessage> {
+    match val {
+        Value::Message(msg) => Ok(msg),
+        other => bail!("expected control message, got {:?}", other),
     }
 }
 
-fn as_number(val: Value) -> Option<BigRational> {
-    if let Value::Number(num) = val {
-        Some(num)
-    } else {
-        None
-    }
+fn try_number(val: Value) -> Result<BigRational> {
+    val.try_into()
 }
 
-fn compute_external(name: String, args: Vec<Value>) -> Option<Value> {
-    fn arg1(args: Vec<Value>) -> Option<Value> {
-        match &args[..] {
-            [a] => Some(a.clone()),
-            _ => None,
+impl TryFrom<Value> for BigRational {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Value) -> Result<Self> {
+        match value {
+            Value::Number(n) => Ok(n),
+            other => bail!("expected number, got {:?}", other),
         }
     }
+}
 
-    fn arg2(args: Vec<Value>) -> Option<(Value, Value)> {
-        match &args[..] {
-            [a1, a2] => Some((a1.clone(), a2.clone())),
-            _ => None,
+impl TryFrom<Value> for String {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Value) -> Result<Self> {
+        match value {
+            Value::Atom(s) => Ok(s),
+            other => bail!("expected atom, got {:?}", other),
         }
     }
+}
 
-    fn key(key: &'static str, args: Vec<Value>) -> Option<Value> {
+impl TryFrom<Value> for Vec<Value> {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Value) -> Result<Self> {
+        match value {
+            Value::Vector(v) => Ok(v),
+            other => bail!("expected vector, got {:?}", other),
+        }
+    }
+}
+
+impl TryFrom<Value> for BoxPattern<Value> {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Value) -> Result<Self> {
+        match value {
+            Value::Pattern(p) => Ok(p),
+            other => bail!("expected pattern, got {:?}", other),
+        }
+    }
+}
+
+impl TryFrom<Value> for ControlMessage {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Value) -> Result<Self> {
+        match value {
+            Value::Message(m) => Ok(m),
+            other => bail!("expected control message, got {:?}", other),
+        }
+    }
+}
+
+
+fn compute_external(name: String, args: Vec<Value>) -> Result<Value> {
+    let arg1 = |args: Vec<Value>| -> Result<Value> {
+        match &args[..] {
+            [a] => Ok(a.clone()),
+            _ => bail!("expected 1 arguments to {}, but got {} instead", &name, args.len()),
+        }
+    };
+
+    let arg2 = |args: Vec<Value>| -> Result<(Value, Value)> {
+        match &args[..] {
+            [a1, a2] => Ok((a1.clone(), a2.clone())),
+            _ => bail!("expected 2 arguments to {}, but got {} instead", &name, args.len()),
+        }
+    };
+
+    let key = |key: &'static str, args: Vec<Value>| -> Result<Value> {
         let pat = to_pattern(arg1(args)?);
         let sound_pat = filter_output(map_output(pat, |val: Value| -> Option<OscType> {
             Some(OscType::String(as_atom(val)?))
         }));
         let output_pat = map_output(pattern::keyed(key, sound_pat), Value::Message).boxed();
-        Some(Value::Pattern(output_pat))
-    }
+        Ok(Value::Pattern(output_pat))
+    };
 
-    fn key_number(key: &'static str, args: Vec<Value>) -> Option<Value> {
+    let key_number = |key: &'static str, args: Vec<Value>| -> Result<Value> {
         let pat = to_pattern(arg1(args)?);
         let sound_pat = filter_output(map_output(pat, |val: Value| -> Option<OscType> {
             Some(OscType::Float(as_number(val)?.to_f32().unwrap()))
         }));
         let output_pat = map_output(pattern::keyed(key, sound_pat), Value::Message).boxed();
-        Some(Value::Pattern(output_pat))
-    }
+        Ok(Value::Pattern(output_pat))
+    };
 
     match &name as &str {
-        "cat" => Some(Value::Pattern(
-            slowcat(get_vector(arg1(args)?)?.into_iter().map(to_pattern)).boxed(),
+        "cat" => Ok(Value::Pattern(
+            slowcat(try_vector(arg1(args)?)?.into_iter().map(to_pattern)).boxed(),
         )),
-        "fc" => Some(Value::Pattern(
-            fastcat(get_vector(arg1(args)?)?.into_iter().map(to_pattern)).boxed(),
+        "fc" => Ok(Value::Pattern(
+            fastcat(try_vector(arg1(args)?)?.into_iter().map(to_pattern)).boxed(),
         )),
-        "par" => Some(Value::Pattern(
-            in_parallel(get_vector(arg1(args)?)?.into_iter().map(to_pattern)).boxed(),
+        "par" => Ok(Value::Pattern(
+            in_parallel(try_vector(arg1(args)?)?.into_iter().map(to_pattern)).boxed(),
         )),
         "s" => key("s", args),
         "fast" => {
             let (rate, pat) = arg2(args)?;
-            let out_pat = speed_up(to_pattern(pat), as_number(rate)?);
-            Some(Value::Pattern(out_pat.boxed()))
+            let out_pat = speed_up(to_pattern(pat), try_number(rate)?);
+            Ok(Value::Pattern(out_pat.boxed()))
         }
         "slow" => {
             let (rate, pat) = arg2(args)?;
-            let out_pat = speed_up(as_pattern(pat)?, time::frac(1, 1) / as_number(rate)?);
-            Some(Value::Pattern(out_pat.boxed()))
+            let out_pat = speed_up(try_pattern(pat)?, time::frac(1, 1) / try_number(rate)?);
+            Ok(Value::Pattern(out_pat.boxed()))
         }
         "merge" => {
             let (pat0, pat1) = arg2(args)?;
-            let p0 = filter_map_output(to_pattern(pat0), as_control);
-            let p1 = filter_map_output(to_pattern(pat1), as_control);
-            Some(Value::Pattern(
+            let p0 = filter_map_result_output(to_pattern(pat0), try_control);
+            let p1 = filter_map_result_output(to_pattern(pat1), try_control);
+            Ok(Value::Pattern(
                 map_output(pattern::merge(p0, p1), Value::Message).boxed(),
             ))
         }
         "scale" => {
             let (scale_pat, note_pat) = arg2(args)?;
             let scale_pat =
-                filter_map_output(to_pattern(scale_pat), |val| as_atom(val)?.try_into().ok());
+                filter_map_result_output(to_pattern(scale_pat), |val| try_atom(val)?.try_into());
             let note_pat =
-                filter_map_output(filter_map_output(to_pattern(note_pat), as_number), |num| {
+                filter_map_output(filter_map_result_output(to_pattern(note_pat), try_number), |num| {
                     Some(Note::new(num.floor().to_i8()?))
                 });
-            Some(Value::Pattern(
+            Ok(Value::Pattern(
                 filter_map_output(pattern::scale(note_pat, scale_pat), |note| {
                     Some(Value::Number(BigRational::from_i8(note.value())?))
                 })
@@ -230,16 +301,16 @@ fn compute_external(name: String, args: Vec<Value>) -> Option<Value> {
             let (arg0, arg1) = arg2(args)?;
             let filter_pat = to_pattern(arg0);
             let pat = to_pattern(arg1);
-            Some(Value::Pattern(
+            Ok(Value::Pattern(
                 pattern::structure(pat, map_output(filter_pat, |_| ())).boxed(),
             ))
         }
         "add" => {
             let (arg0, arg1) = arg2(args)?;
-            let pat0 = filter_map_output(to_pattern(arg0), as_number);
-            let pat1 = filter_map_output(to_pattern(arg1), as_number);
+            let pat0 = filter_map_result_output(to_pattern(arg0), try_number);
+            let pat1 = filter_map_result_output(to_pattern(arg1), try_number);
             let pat_result = pattern::combine(pat0, pat1, |l, r| l + r);
-            Some(Value::Pattern(
+            Ok(Value::Pattern(
                 map_output(pat_result, Value::Number).boxed(),
             ))
         }
@@ -251,8 +322,7 @@ fn compute_external(name: String, args: Vec<Value>) -> Option<Value> {
         "room" => key_number("room", args),
         "n" => key_number("n", args),
         _ => {
-            println!("invalid external {}", name);
-            None
+            bail!("invalid external {}", name);
         }
     }
 }
@@ -289,20 +359,22 @@ impl Environment {
     }
 }
 
-pub fn eval_control_pattern(expr: Expr) -> Option<BoxPattern<ControlMessage>> {
-    Some(filter_output(map_output(eval_pattern(expr)?, as_control)).boxed())
+pub fn eval_control_pattern(expr: Expr) -> Result<BoxPattern<ControlMessage>> {
+    let value_pattern = eval_pattern(expr)?;
+    Ok(filter_map_result_output(value_pattern, try_control).boxed())
 }
 
-pub fn eval_pattern(expr: Expr) -> Option<BoxPattern<Value>> {
-    let value = eval_with(&mut Environment::new(), expr)?;
-    if let Value::Pattern(pat) = value {
-        return Some(pat);
+pub fn eval_pattern(expr: Expr) -> Result<BoxPattern<Value>> {
+    let value = eval_with(&mut Environment::new(), expr)
+        .with_context(|| "while trying to evaluate code as a pattern".to_string())?;
+
+    match value {
+        Value::Pattern(pat) => Ok(pat),
+        _ => bail!("failed evaluating code as a pattern, got value {} instead", value)
     }
-
-    None
 }
 
-fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
+fn eval_with(env: &mut Environment, expr: Expr) -> Result<Value> {
     let mut get_fresh_var = || {
         let fresh_var = format!("fresh{}", env.fresh_counter);
         env.fresh_counter += 1;
@@ -314,44 +386,44 @@ fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
             let arg_values: Vec<Value> = args
                 .into_iter()
                 .map(|e| eval_with(env, e))
-                .collect::<Option<Vec<_>>>()?;
+                .collect::<Result<Vec<_>>>()
+                .with_context(|| format!("while evaluating arguments to '{}'", name))?;
 
             compute_external(name, arg_values)
         }
         Expr::Apply(f, arg) => {
-            let (name, subexpr) = match eval_with(env, *f)? {
-                Value::Lambda(name, subexpr) => Some((name, subexpr)),
-                _ => None,
+            let (name, subexpr) = match eval_with(env, *f).with_context(|| "while evaluating function of function application".to_string())? {
+                Value::Lambda(name, subexpr) => Ok::<(String, Expr), anyhow::Error>((name, subexpr)),
+                val => bail!("tried applying a non-function value {val}"),
             }?;
-            let arg_value = eval_with(env, *arg)?;
+
+            let arg_value = eval_with(env, *arg).with_context(|| "while evaluating argument of function application")?;
             let old_value = env.variable_map.insert(name.clone(), arg_value);
 
             let result = eval_with(env, subexpr)?;
             if let Some(old_value) = old_value {
                 env.variable_map.insert(name, old_value);
             }
-            Some(result)
+            Ok(result)
         }
-        Expr::Lambda(name, expr) => Some(Value::Lambda(name, *expr)),
-        Expr::Number(num) => Some(Value::Number(num)),
-        Expr::Atom(atom) => Some(Value::Atom(atom)),
-        Expr::Vector(elements) => Some(Value::Vector(
+        Expr::Lambda(name, expr) => Ok(Value::Lambda(name, *expr)),
+        Expr::Number(num) => Ok(Value::Number(num)),
+        Expr::Atom(atom) => Ok(Value::Atom(atom)),
+        Expr::Vector(elements) => Ok(Value::Vector(
             elements
                 .into_iter()
                 .map(|expr| eval_with(env, expr))
-                .collect::<Option<_>>()?,
+                .collect::<Result<_>>()
+                .with_context(|| "while evaluating elements of a vector".to_string())?
         )),
         Expr::Var(name) => {
             if EXTERNAL_ARG1.contains(name.as_str()) {
-                Some(wrap_f1(get_fresh_var(), name))
+                Ok(wrap_f1(get_fresh_var(), name))
             } else if EXTERNAL_ARG2.contains(name.as_str()) {
-                Some(wrap_f2(get_fresh_var(), get_fresh_var(), name))
+                Ok(wrap_f2(get_fresh_var(), get_fresh_var(), name))
             } else {
                 let res = env.variable_map.get(&name).cloned();
-                if res.is_none() {
-                    println!("ERROR: variable {} not found", name);
-                }
-                res
+                res.ok_or_else(|| anyhow!("variable not {} found", name))
             }
         }
     }
