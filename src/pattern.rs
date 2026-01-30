@@ -1,6 +1,5 @@
 use num::BigRational;
 use num::{self};
-use rand::Rng;
 use rosc::OscType;
 
 use anyhow::Result;
@@ -138,14 +137,6 @@ where
     }
 }
 
-struct Rate<T, I>
-where
-    T: Pattern<I>,
-{
-    pattern: T,
-    _marker: std::marker::PhantomData<I>,
-}
-
 pub struct BoxEvents<T>(Box<dyn Iterator<Item = Event<T>>>);
 
 impl<T> Iterator for BoxEvents<T> {
@@ -232,27 +223,6 @@ where
 {
     let len = pats.len();
     speed_up(slowcat(pats), frac(len as i64, 1))
-}
-
-pub fn random_slowcat<T, I>(pats: I) -> impl Pattern<T>
-where
-    I: Iterator,
-    I::Item: Pattern<T>,
-{
-    let patterns: Rc<[I::Item]> = pats.collect();
-    move |segment: Segment| {
-        let patterns = patterns.clone();
-        segment
-            .split_on_cycles()
-            .into_iter()
-            .flat_map(move |cycle| {
-                let mut rng = rand::rng();
-                let len = patterns.len();
-                let index = rng.random_range(0..len);
-                let pattern = &patterns[index];
-                pattern.query(cycle.clone())
-            })
-    }
 }
 
 pub fn keyed(key: &'static str, values: impl Pattern<OscType>) -> impl Pattern<ControlMessage> {
@@ -433,7 +403,7 @@ mod tests {
         note::Note,
         pattern::{
             Pattern, Segment, Time, cycled, display_pattern, empty, fastcat, in_parallel,
-            random_slowcat, scale, slowcat, speed_up, structure,
+            scale, slowcat, speed_up, structure,
         },
         scale::Scale,
         segment::cycle_segment_from_time,
@@ -720,15 +690,6 @@ mod tests {
              [13/3, 14/3) | 11\n\
              [14/3, 5) | 17\n"
         );
-    }
-
-    #[test]
-    fn test_random_slowcat() {
-        let pattern = random_slowcat(vec![cycled(1), cycled(2)].into_iter());
-        let output = display_pattern(&pattern);
-        // Since the output is random, we just check that it has the correct number of events.
-        let lines: Vec<&str> = output.lines().collect();
-        assert_eq!(lines.len(), 5);
     }
 
     #[test]
