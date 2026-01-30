@@ -11,10 +11,11 @@ mod superdirt;
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::RwLock;
@@ -54,20 +55,9 @@ enum Commands {
 }
 
 /// Loads and parses a code string, returning the pattern to play.
-fn parse_code(code: &str) -> Option<BoxPattern<ControlMessage>> {
-    match parser::parse(code) {
-        Ok(parsed) => match lang::eval_control_pattern(parsed) {
-            Some(pat) => Some(pat),
-            None => {
-                eprintln!("Evaluation error");
-                None
-            }
-        },
-        Err(e) => {
-            eprintln!("Parse error: {}", e);
-            None
-        }
-    }
+fn parse_code(code: &str) -> Result<BoxPattern<ControlMessage>> {
+    let parsed = parser::parse(code)?;
+    lang::eval_control_pattern(parsed).ok_or_else(|| anyhow!("Evaluation error"))
 }
 
 /// Combines multiple code strings from different clients into a single pattern.
@@ -77,7 +67,13 @@ fn combine_patterns(clients: &HashMap<String, String>) -> Option<Vec<BoxPattern<
         .iter()
         .filter_map(|(ip, code)| {
             println!("Parsing code from client {}", ip);
-            parse_code(code)
+            match parse_code(code) {
+                Ok(pat) => Some(pat),
+                Err(e) => {
+                    eprintln!("Error parsing code from {}: {}", ip, e);
+                    None
+                }
+            }
         })
         .collect();
 
@@ -135,21 +131,22 @@ fn run_collaboration_client(server_addr: &str, tracked_file: &str) {
         };
 
         // Shared state for the combined patterns from all clients
-        let combined_clients: Arc<RwLock<HashMap<String, String>>> =
-            Arc::clone(&client.clients);
+        let combined_clients: Arc<RwLock<HashMap<String, String>>> = Arc::clone(&client.clients);
 
         // Create reload flag shared between file watcher, network updates, and SuperDirt server
         let reload_flag = Arc::new(AtomicBool::new(false));
-        let reload_flag_file = Arc::clone(&reload_flag);
         let reload_flag_network = Arc::clone(&reload_flag);
+
+        // Channel for file watcher to notify about changes
+        let (file_changed_tx, mut file_changed_rx) = tokio::sync::mpsc::channel::<()>(1);
 
         // Set up file watcher to watch local file
         let mut watcher = RecommendedWatcher::new(
             move |res: Result<notify::Event, notify::Error>| {
                 if let Ok(event) = res {
                     if event.kind.is_modify() {
-                        println!("Local file changed, signaling reload...");
-                        reload_flag_file.store(true, Ordering::SeqCst);
+                        println!("Local file changed...");
+                        let _ = file_changed_tx.blocking_send(());
                     }
                 }
             },
@@ -163,18 +160,12 @@ fn run_collaboration_client(server_addr: &str, tracked_file: &str) {
 
         println!("Watching {} for changes...", tracked_file);
 
-        // Spawn a task to send local file updates to the server
+        // Spawn a task to send local file updates to the server when notified by watcher
         tokio::spawn(async move {
-            let mut last_content = String::new();
-            loop {
-                tokio::time::sleep(Duration::from_millis(500)).await;
-
+            while file_changed_rx.recv().await.is_some() {
                 if let Ok(content) = std::fs::read_to_string(&tracked_file) {
-                    if content != last_content {
-                        last_content = content.clone();
-                        if let Err(e) = client.send_code_update(content).await {
-                            eprintln!("Failed to send code update: {}", e);
-                        }
+                    if let Err(e) = client.send_code_update(content).await {
+                        eprintln!("Failed to send code update: {}", e);
                     }
                 }
             }
@@ -247,16 +238,20 @@ fn run_standalone(tracked_file: &str) {
     println!("Watching {} for changes...", tracked_file);
 
     // Create the pattern loader for the tracked file
-    let load_patterns = move || {
-        match std::fs::read_to_string(&tracked_file) {
-            Ok(code) => {
-                println!("Successfully loaded {}", tracked_file);
-                parse_code(&code).map(|pat| vec![pat])
+    let load_patterns = move || match std::fs::read_to_string(&tracked_file) {
+        Ok(code) => {
+            println!("Successfully loaded {}", tracked_file);
+            match parse_code(&code) {
+                Ok(pat) => Some(vec![pat]),
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    None
+                }
             }
-            Err(e) => {
-                eprintln!("Failed to read {}: {}", tracked_file, e);
-                None
-            }
+        }
+        Err(e) => {
+            eprintln!("Failed to read {}: {}", tracked_file, e);
+            None
         }
     };
 

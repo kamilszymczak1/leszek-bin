@@ -1,7 +1,7 @@
 use num::BigRational;
 use num_traits::cast::ToPrimitive;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
