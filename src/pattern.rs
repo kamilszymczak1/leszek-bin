@@ -268,6 +268,13 @@ impl<T> Event<T> {
             self.value
         )
     }
+
+    fn map_value(self, f: impl Fn(T) -> T) -> Event<T> {
+        Event::new(
+            self.part,
+            f(self.value)
+        )
+    }
 }
 
 impl<T> std::fmt::Display for Event<T> where T: std::fmt::Display {
@@ -484,6 +491,36 @@ where
     }
 }
 
+pub fn combine_left<P, Q, T, R, F>(first : P, second : Q, f : F) -> impl Pattern<T>
+where
+    P: Pattern<T>,
+    Q : Pattern<R>,
+    T : Clone,
+    R : Clone,
+    F: Fn(T, R) -> T + Clone
+{
+    move |segment: Segment| {
+        let second_events: Vec<Event<R>> = second.query(segment.clone()).collect();
+
+        let mut results = Vec::new();
+        for fevent in first.query(segment.clone()) {
+            second_events.iter().filter(
+                |sevent| fevent.part.part.intersection(&sevent.part.part).is_some()
+            )
+            .min_by_key(
+                |sevent| {
+                    sevent.part.part.start.clone()
+                }
+            ).map(
+                |sevent| {
+                    results.push(fevent.map_value(|v| f(v, sevent.value.clone())));
+                }
+            );
+        }
+        results.into_iter()
+    }
+}
+
 pub fn filter_out<P, Q, T>(pattern : P, filter : Q) -> impl Pattern<T>
 where
     P: Pattern<T>,
@@ -525,7 +562,7 @@ where
 pub fn scale<P, Q>(pattern : P, scales: Q) -> impl Pattern<Note>
 where P: Pattern<Note>, Q: Pattern<Scale>
 {
-    combine(
+    combine_left(
         pattern,
         scales,
         |note, scale| {
@@ -761,6 +798,29 @@ mod tests {
              [3, 4) | 6\n\
              [4, 9/2) | 3\n\
              [9/2, 5) | 4\n"
+        );
+    }
+
+    #[test]
+    fn test_combine_left() {
+        let pattern = crate::pattern::combine_left(
+            fastcat(vec![cycled(1), cycled(2)].into_iter()).boxed(),
+            fastcat(vec![cycled(5), cycled(10), cycled(15)].into_iter()).boxed(),
+            |a, b| a + b
+        );
+
+        assert_eq!(
+            display_pattern(&pattern),
+            "[0, 1/2) | 6\n\
+             [1/2, 1) | 12\n\
+             [1, 3/2) | 6\n\
+             [3/2, 2) | 12\n\
+             [2, 5/2) | 6\n\
+             [5/2, 3) | 12\n\
+             [3, 7/2) | 6\n\
+             [7/2, 4) | 12\n\
+             [4, 9/2) | 6\n\
+             [9/2, 5) | 12\n"
         );
     }
     
