@@ -522,6 +522,19 @@ where
     }
 }
 
+pub fn filter_out<P, Q, T>(pattern : P, filter : Q) -> impl Pattern<T>
+where
+    P: Pattern<T>,
+    Q : Pattern<()>,
+    T : Clone
+{
+    combine(
+        pattern,
+        filter,
+        |a, _| a
+    )
+}
+
 pub fn filter_output<T>(pat: impl Pattern<Option<T>>) -> impl Pattern<T> { 
     move |segment: Segment| {
         pat.query(segment).map(|ev| {
@@ -547,20 +560,28 @@ where
     }
  }
 
-pub fn scale<P>(pattern : P, scale : &Scale) -> impl Pattern<Note>
-where P : Pattern<Note>
+pub fn scale<P, Q>(pattern : P, scales: Q) -> impl Pattern<Note>
+where P: Pattern<Note>, Q: Pattern<Scale>
 {
-    move |segment: Segment| {
-        pattern.query(segment).map(move |event| {
-            let mapped_value = map_note(&scale, event.value);
-            Event::new(event.part, mapped_value)
-        })
+    combine(
+        pattern,
+        scales,
+        |note, scale| {
+            map_note(&scale, note)
+        }
+    )
+}
+
+pub fn empty<T>() -> impl Pattern<T>
+{
+    move |_: Segment| {
+        std::iter::empty()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{note::Note, scale::Scale, pattern::{Pattern, Segment, Time, cycled, display_pattern, fastcat, frac, in_parallel, random_slowcat, slowcat, speed_up, scale}};
+    use crate::{note::Note, scale::Scale, pattern::{Pattern, Segment, Time, cycled, display_pattern, fastcat, frac, in_parallel, random_slowcat, slowcat, speed_up, scale, empty, filter_out}};
 
     #[test]
     fn test_time() {
@@ -821,15 +842,41 @@ mod tests {
             cycled(Note::new(4)),
         ].into_iter());
 
-        let scaled_pattern = scale(pattern, &Scale::CMajor);
+        let scaled_pattern = scale(pattern, slowcat(vec![
+            cycled(Scale::CMajor),
+            cycled(Scale::CMinor),
+        ].into_iter()));
 
         assert_eq!(
             display_pattern(&scaled_pattern),
             "[0, 1) | Note(0)\n\
-             [1, 2) | Note(4)\n\
+             [1, 2) | Note(3)\n\
              [2, 3) | Note(7)\n\
              [3, 4) | Note(0)\n\
              [4, 5) | Note(4)\n"
+        );
+    }
+
+    #[test]
+    fn test_filter_out() {
+        let pattern = slowcat(vec![
+            cycled(1),
+            cycled(2),
+            cycled(3),
+        ].into_iter());
+
+        let filter = slowcat(vec![
+            cycled(()).boxed(),
+            empty().boxed(),
+        ].into_iter());
+
+        let filtered_pattern = filter_out(pattern, filter);
+
+        assert_eq!(
+            display_pattern(&filtered_pattern),
+            "[0, 1) | 1\n\
+             [2, 3) | 3\n\
+             [4, 5) | 2\n"
         );
     }
 }

@@ -1,6 +1,6 @@
 use crate::note::Note;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Scale {
     CMinor,
     CMajor,
