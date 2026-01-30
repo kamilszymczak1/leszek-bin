@@ -118,13 +118,13 @@ where
             .flat_map(|pat| pat.query(seg.clone()))
             .filter_map(|msg| {
                 println!("{:?}", msg);
-                let encoded = encode_message(&ctx, msg);
-                encoded
+                
+                encode_message(&ctx, msg)
             })
             .for_each(|packet| {
                 bytes.clear();
                 rosc::encoder::encode_into(&packet, &mut bytes).unwrap();
-                if bytes.len() > 0 {
+                if !bytes.is_empty() {
                     socket.send_to(&bytes, "0.0.0.0:57120").unwrap();
                 }
             });

@@ -12,7 +12,7 @@ use std::cmp::{max, min};
 use std::ops::{Add, Div, Mul, Sub};
 use std::rc::Rc;
 
-use crate::superdirt::{self, ControlMessage};
+use crate::superdirt::ControlMessage;
 
 pub fn frac(a: i64, b: i64) -> BigRational {
     Ratio::new(BigInt::from(a), BigInt::from(b))
@@ -533,13 +533,10 @@ where
 
         let mut results = Vec::new();
         for fevent in first.query(segment.clone()) {
-            second_events
+            if let Some(sevent) = second_events
                 .iter()
                 .filter(|sevent| fevent.part.part.intersection(&sevent.part.part).is_some())
-                .min_by_key(|sevent| sevent.part.part.start.clone())
-                .map(|sevent| {
-                    results.push(fevent.map_value(|v| f(v, sevent.value.clone())));
-                });
+                .min_by_key(|sevent| sevent.part.part.start.clone()) { results.push(fevent.map_value(|v| f(v, sevent.value.clone()))); }
         }
         results.into_iter()
     }
@@ -568,14 +565,13 @@ where
 pub fn filter_output<T>(pat: impl Pattern<Option<T>>) -> impl Pattern<T> {
     move |segment: Segment| {
         pat.query(segment)
-            .map(|ev| {
+            .filter_map(|ev| {
                 if let Some(val) = ev.value {
                     Some(Event::new(ev.part, val))
                 } else {
                     None
                 }
             })
-            .flatten()
     }
 }
 

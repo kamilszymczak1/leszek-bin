@@ -6,7 +6,7 @@ use num::FromPrimitive;
 use rosc::OscType;
 
 use crate::note::Note;
-use crate::pattern::{self, fastcat, filter_map_output, in_parallel, speed_up, structure};
+use crate::pattern::{self, fastcat, filter_map_output, in_parallel, speed_up};
 use crate::pattern::{BoxPattern, Pattern, filter_output, map_output, slowcat};
 use crate::superdirt::ControlMessage;
 
@@ -124,7 +124,7 @@ fn as_number(val: Value) -> Option<BigRational> {
     }
 }
 
-fn compute_external(name: String, mut args: Vec<Value>) -> Option<Value> {
+fn compute_external(name: String, args: Vec<Value>) -> Option<Value> {
     fn arg1(args: Vec<Value>) -> Option<Value> {
         match &args[..] {
             [a] => Some(a.clone()),
@@ -278,7 +278,7 @@ pub fn eval_pattern(expr: Expr) -> Option<BoxPattern<Value>> {
 fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
     dbg!(&env, expr.clone());
     let mut get_fresh_var = || {
-        let fresh_var = String::from(format!("fresh{}", env.fresh_counter));
+        let fresh_var = format!("fresh{}", env.fresh_counter);
         env.fresh_counter += 1;
         fresh_var
     };

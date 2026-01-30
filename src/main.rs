@@ -33,9 +33,9 @@ fn main() {
             &lang::eval_pattern(parser::parse("cat([1, 2])").unwrap()).unwrap()
         )
     );
-    let pat1 =
+    let _pat1 =
         fastcat([s("bd"), slowcat([s("sn"), s("hh")].into_iter()).boxed()].into_iter()).boxed();
-    let pat2 = pattern::cycled(ControlMessage::sound("arpy")).boxed();
+    let _pat2 = pattern::cycled(ControlMessage::sound("arpy")).boxed();
 
     let code = std::fs::read_to_string("demo.code").unwrap();
     let parsed = parser::parse(&code).unwrap();
