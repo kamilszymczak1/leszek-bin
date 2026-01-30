@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use num::BigRational;
+use num::FromPrimitive;
 
 use rosc::OscType;
 
+use crate::note::Note;
 use crate::pattern::{self, fastcat, filter_map_output, in_parallel, scale, speed_up};
 use crate::pattern::{BoxPattern, Pattern, slowcat, map_output, filter_output};
 use crate::superdirt::ControlMessage;
@@ -190,6 +192,15 @@ fn compute_external(name: String, mut args: Vec<Value>) -> Option<Value> {
             let p1 = filter_map_output(to_pattern(pat1), as_control);
             Some(Value::Pattern(map_output(pattern::merge(p0, p1), Value::Message).boxed()))
         },
+        "scale" => {
+            let (scale_pat, note_pat) = arg2(args)?;
+            let scale_pat = filter_map_output(to_pattern(scale_pat), |val| as_atom(val)?.try_into().ok());
+            let note_pat = filter_map_output(
+                filter_map_output(to_pattern(note_pat), as_number), 
+                |num| { Some(Note::new(num.floor().to_i8()?)) }
+                );
+            Some(Value::Pattern(filter_map_output(pattern::scale(note_pat, scale_pat), |note| Some(Value::Number(BigRational::from_i8(note.value())?))).boxed()))
+        },
         "velocity" => key_number("velocity", args),
         "clip" => key_number("clip", args),
         "delay" => key_number("delay", args),
@@ -296,6 +307,7 @@ fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
                 "clip" => { Some(wrap_f1(String::from("clip"))) }
                 "delay" => { Some(wrap_f1(String::from("delay"))) }
                 "room" => { Some(wrap_f1(String::from("room"))) }
+                "scale" => { Some(wrap_f2(String::from("scale"))) }
                 _ => { 
                     let res = env.variable_map.get(&name).cloned();
                     if res.is_none() {
