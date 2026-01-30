@@ -119,7 +119,7 @@ where
     let mut pats = load_patterns().expect("Failed to load initial patterns");
     let mut bytes = Vec::new();
 
-    let socket = UdpSocket::bind("0.0.0.0:6767").unwrap();
+    let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
 
     loop {
         // Check for pattern reload
