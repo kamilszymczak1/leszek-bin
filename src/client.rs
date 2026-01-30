@@ -16,10 +16,10 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::{RwLock, mpsc};
 
+use crate::eval;
 use crate::network::{ClientMessage, ServerMessage};
 use crate::pattern::{BoxPattern, Pattern, in_parallel};
 use crate::superdirt::{self, ControlMessage};
-use crate::eval;
 
 /// Client state for collaborative editing.
 pub struct CollaborationClient {
