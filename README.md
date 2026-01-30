@@ -146,22 +146,54 @@ This allows multiple musicians to jam together in real-time, each contributing t
 Leszek uses a simple, expressive syntax for defining musical patterns. Here's an example from [demo.code](demo.code):
 
 ```
-par([
-    n(scale(slow(2, cat(["cminor", "cmajor"])), fc([0, 3, 2, 1])))
-        .s("arpy")
-])
+n([0, 8, 4, 6, 9, 2, 0, -2]
+    .fc
+    .fast(3)
+    .add(slow(4, cat([0, 2])))
+    .scale(["minor", "major", "lydian", ["minor", "major"].cat].cat)
+    .transpose(["c", "c", "f", ["f", "dh"].fc].cat)
+    .struct([1, 1, 1, [~, 1].fc, 1, 1, 1, ~].fc)
+    .slow(2)
+    )
+    @room(0.2)
+    @s("supervibe")
+    @velocity(fast(8, fast(2, cat([0.9, 0.6, 0.7]))))
+    @accelerate([0.0, 0.0, 0.01].cat.slow(4))
 ```
 
 ### Key elements:
 
-- `par([...])` — plays patterns in parallel (simultaneously)
-- `n(...)` — defines note values
-- `scale(name, pattern)` — applies a musical scale to the pattern
-- `slow(factor, pattern)` — slows down the pattern by the given factor
-- `cat([...])` — concatenates patterns sequentially
-- `fc([...])` — creates a "fast cycle" pattern from a sequence of values
-- `.s("arpy")` — sets the sound/sample to use (e.g., "arpy" is an arpeggio synth)
+- `n([...])` — defines note values as a list
+- `.fc` — creates a "fast cycle" pattern from the preceding list
+- `.fast(factor)` / `.slow(factor)` — speeds up or slows down the pattern
+- `.add(pattern)` — adds values to the pattern (for transposition, etc.)
+- `.scale(pattern)` — applies a musical scale (e.g., `"minor"`, `"major"`, `"lydian"`)
+- `.transpose(pattern)` — transposes to a root note (e.g., `"c"`, `"f"`, `"dh"` for D#)
+- `.struct(pattern)` — applies a rhythmic structure to the pattern
+- `cat([...])` / `.cat` — concatenates patterns sequentially
+- `~` — represents a rest (silence)
+- `@s("supervibe")` — sets the sound/sample to use
+- `@room(0.2)` — applies reverb effect
+- `@velocity(pattern)` — controls note velocity/volume
+- `@accelerate(pattern)` — applies pitch acceleration effect
 
-Numbers in the pattern represent scale degrees that get played in sequence.
+### Method chaining
+
+The syntax supports method chaining with `.` for pattern transformations:
+
+```
+[0, 1, 2].fc.fast(2).slow(4)
+```
+
+### Control parameters
+
+Use `@` to set SuperDirt control parameters:
+
+```
+n([0, 2, 4].fc)
+    @s("piano")
+    @room(0.3)
+    @velocity(0.8)
+```
 
 
