@@ -1,28 +1,31 @@
-use std::thread;
-use std::time::{Duration, SystemTime};
 use num::BigRational;
 use num_traits::cast::ToPrimitive;
+use std::thread;
+use std::time::{Duration, SystemTime};
 
 use std::net::UdpSocket;
 
 use rosc::{self, OscBundle, OscMessage, OscPacket, OscType};
 
-use crate::pattern::{Pattern, Event, Segment, Time};
+use crate::pattern::{Event, Pattern, Segment, Time};
 
 struct ServerContext {
     start_time: SystemTime,
-    cps: f64
+    cps: f64,
 }
 
 impl ServerContext {
     fn new(cps: f64) -> Self {
-        Self { start_time: SystemTime::now(), cps }
+        Self {
+            start_time: SystemTime::now(),
+            cps,
+        }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct ControlMessage {
-    fields: Vec<(String, OscType)>
+    fields: Vec<(String, OscType)>,
 }
 
 impl ControlMessage {
@@ -32,7 +35,7 @@ impl ControlMessage {
 
     pub fn sound(sound: &str) -> ControlMessage {
         ControlMessage {
-            fields: vec![(String::from("s"), sound.into())]
+            fields: vec![(String::from("s"), sound.into())],
         }
     }
 
@@ -59,7 +62,9 @@ fn encode_message(ctx: &ServerContext, message: Event<ControlMessage>) -> Option
     let fields = message.value.fields;
     println!("{:?}", part.whole.clone());
     println!("{:?}", part.part.clone());
-    if let Some(whole) = part.whole && whole.start >= part.part.start {
+    if let Some(whole) = part.whole
+        && whole.start >= part.part.start
+    {
         let start = whole.clone().start;
         let time = cycles_to_system_time(ctx, start.clone());
         let delta: f32 = scale_duration(ctx, whole.duration()).as_secs_f32();
@@ -68,7 +73,7 @@ fn encode_message(ctx: &ServerContext, message: Event<ControlMessage>) -> Option
             .into_iter()
             .flat_map(|(key, val)| [OscType::String(key), val])
             .collect();
-        
+
         args.push("delta".into());
         args.push(delta.into());
         args.push("cycle".into());
@@ -77,12 +82,12 @@ fn encode_message(ctx: &ServerContext, message: Event<ControlMessage>) -> Option
 
         let msg = OscMessage {
             addr: String::from(SUPERDIRT_ADDR),
-            args
+            args,
         };
 
-        let packet = rosc::OscPacket::Bundle(OscBundle { 
+        let packet = rosc::OscPacket::Bundle(OscBundle {
             timetag: time.try_into().unwrap(),
-            content: vec![OscPacket::Message(msg)]
+            content: vec![OscPacket::Message(msg)],
         });
 
         Some(packet)
@@ -109,18 +114,16 @@ where
     loop {
         let seg = Segment::new(sent_until.clone(), sent_until.clone() + Time::new(1, 1));
 
-        pats
-            .iter()
+        pats.iter()
             .flat_map(|pat| pat.query(seg.clone()))
             .filter_map(|msg| {
                 println!("{:?}", msg);
-                let encoded = encode_message(&ctx, msg);
-                encoded
+                encode_message(&ctx, msg)
             })
             .for_each(|packet| {
                 bytes.clear();
                 rosc::encoder::encode_into(&packet, &mut bytes).unwrap();
-                if bytes.len() > 0 {
+                if !bytes.is_empty() {
                     socket.send_to(&bytes, "0.0.0.0:57120").unwrap();
                 }
             });
