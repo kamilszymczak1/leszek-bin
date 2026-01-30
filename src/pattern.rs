@@ -1,4 +1,7 @@
 use num::BigRational;
+use num::rational::Ratio;
+use num::{self, BigInt};
+use num_traits::cast::ToPrimitive;
 use rand::Rng;
 use rosc::OscType;
 
@@ -403,7 +406,7 @@ where
     P0: Pattern<ControlMessage>,
     P1: Pattern<ControlMessage>,
 {
-    combine(pattern0, pattern1, |msg0, msg1| {
+    combine_left(pattern0, pattern1, |msg0, msg1| {
         let mut msg = msg0.clone();
         msg.merge(&mut msg1.clone());
         msg
