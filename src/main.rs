@@ -145,10 +145,11 @@ fn run_collaboration_client(server_addr: &str, tracked_file: &str) {
         let mut watcher = RecommendedWatcher::new(
             move |res: Result<notify::Event, notify::Error>| {
                 if let Ok(event) = res
-                    && event.kind.is_modify() {
-                        println!("Local file changed...");
-                        let _ = file_changed_tx.blocking_send(());
-                    }
+                    && event.kind.is_modify()
+                {
+                    println!("Local file changed...");
+                    let _ = file_changed_tx.blocking_send(());
+                }
             },
             notify::Config::default().with_poll_interval(Duration::from_millis(500)),
         )
@@ -165,9 +166,10 @@ fn run_collaboration_client(server_addr: &str, tracked_file: &str) {
         tokio::spawn(async move {
             loop {
                 if let Ok(content) = std::fs::read_to_string(&tracked_file)
-                    && let Err(e) = client.send_code_update(content).await {
-                        eprintln!("Failed to send code update: {}", e);
-                    }
+                    && let Err(e) = client.send_code_update(content).await
+                {
+                    eprintln!("Failed to send code update: {}", e);
+                }
 
                 // Wait for next file change (first iteration runs immediately)
                 if file_changed_rx.recv().await.is_none() {
