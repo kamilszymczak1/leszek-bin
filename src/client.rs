@@ -16,11 +16,10 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::{RwLock, mpsc};
 
-use crate::lang;
 use crate::network::{ClientMessage, ServerMessage};
-use crate::parser;
-use crate::pattern::{BoxPattern, Pattern, empty, in_parallel};
+use crate::pattern::{BoxPattern, Pattern, in_parallel};
 use crate::superdirt::{self, ControlMessage};
+use crate::eval;
 
 /// Client state for collaborative editing.
 pub struct CollaborationClient {
@@ -96,20 +95,14 @@ impl CollaborationClient {
     }
 }
 
-/// Loads and parses a code string, returning the pattern to play.
-fn parse_code(code: &str) -> Result<BoxPattern<ControlMessage>> {
-    let parsed = parser::parse(code)?;
-    lang::eval_control_pattern(parsed)
-}
-
 /// Combines multiple code strings from different clients into a single pattern.
 /// Uses in_parallel to play all patterns simultaneously.
-fn combine_patterns(clients: &HashMap<String, String>) -> Option<Vec<BoxPattern<ControlMessage>>> {
+fn combine_patterns(clients: &HashMap<String, String>) -> BoxPattern<ControlMessage> {
     let patterns: Vec<BoxPattern<ControlMessage>> = clients
         .iter()
         .filter_map(|(ip, code)| {
             println!("Parsing code from client {}", ip);
-            match parse_code(code) {
+            match eval::parse_and_eval_code(code) {
                 Ok(pat) => Some(pat),
                 Err(e) => {
                     eprintln!("Error parsing code from {}: {}", ip, e);
@@ -118,13 +111,7 @@ fn combine_patterns(clients: &HashMap<String, String>) -> Option<Vec<BoxPattern<
             }
         })
         .collect();
-
-    if patterns.is_empty() {
-        Some(vec![empty().boxed()])
-    } else {
-        // Combine all patterns using in_parallel
-        Some(vec![in_parallel(patterns.into_iter()).boxed()])
-    }
+    in_parallel(patterns.into_iter()).boxed()
 }
 
 /// Runs the collaboration client.
