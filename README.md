@@ -34,7 +34,33 @@ sudo usermod -a -G audio $USER
 groups | grep audio
 ```
 
-#### Step 2: Install SuperCollider
+#### Step 2: Package Preconfiguration
+
+**Install dependencies:**
+
+Debian/Ubuntu/Mint/Pop!_OS:
+```bash
+sudo apt update
+sudo apt install git jackd2 qjackctl zlib1g-dev gcc g++ ghc cabal-install
+```
+
+Arch/Manjaro:
+```bash
+sudo pacman -Syu
+sudo pacman -Sy git jack2 qjackctl
+```
+
+Fedora:
+```bash
+sudo dnf install git-core qjackctl gcc-c++ cabal-install
+```
+
+**Remove conflicts (Arch/Manjaro only):**
+```bash
+sudo pacman -R lib32-mesa-demos mesa-demos
+```
+
+#### Step 3: Install SuperCollider
 
 **Debian/Ubuntu/Mint/Pop!_OS:**
 ```bash
@@ -57,7 +83,7 @@ sudo dnf install supercollider-sc3-plugins
 sudo dnf copr disable ycollet/audinux
 ```
 
-#### Step 3: Install SuperDirt
+#### Step 4: Install SuperDirt
 
 1. Check the latest SuperDirt version:
 ```bash
@@ -163,19 +189,19 @@ n([0, 8, 4, 6, 9, 2, 0, -2]
 
 ### Key elements:
 
-- `n([...])` — defines note values as a list
-- `.fc` — creates a "fast cycle" pattern from the preceding list
-- `.fast(factor)` / `.slow(factor)` — speeds up or slows down the pattern
-- `.add(pattern)` — adds values to the pattern (for transposition, etc.)
-- `.scale(pattern)` — applies a musical scale (e.g., `"minor"`, `"major"`, `"lydian"`)
-- `.transpose(pattern)` — transposes to a root note (e.g., `"c"`, `"f"`, `"dh"` for D#)
-- `.struct(pattern)` — applies a rhythmic structure to the pattern
-- `cat([...])` / `.cat` — concatenates patterns sequentially
-- `~` — represents a rest (silence)
-- `@s("supervibe")` — sets the sound/sample to use
-- `@room(0.2)` — applies reverb effect
-- `@velocity(pattern)` — controls note velocity/volume
-- `@accelerate(pattern)` — applies pitch acceleration effect
+- `n([...])`: defines note values as a list
+- `.fc`: creates a "fast cycle" pattern from the preceding list
+- `.fast(factor)` / `.slow(factor)`: speeds up or slows down the pattern
+- `.add(pattern)`: adds values to the pattern for transposition
+- `.scale(pattern)`: applies a musical scale like `"minor"`, `"major"`, or `"lydian"`
+- `.transpose(pattern)`: transposes to a root note like `"c"`, `"f"`, or `"dh"` (D#)
+- `.struct(pattern)`: applies a rhythmic structure to the pattern
+- `cat([...])` / `.cat`: concatenates patterns sequentially
+- `~`: represents a rest (silence)
+- `@s("supervibe")`: sets the sound or sample to use
+- `@room(0.2)`: applies reverb effect
+- `@velocity(pattern)`: controls note velocity and volume
+- `@accelerate(pattern)`: applies pitch acceleration effect
 
 ### Method chaining
 
