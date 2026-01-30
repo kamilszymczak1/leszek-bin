@@ -225,27 +225,6 @@ where
     speed_up(slowcat(pats), frac(len as i64, 1))
 }
 
-pub fn _random_slowcat<T, I>(pats: I) -> impl Pattern<T>
-where
-    I: Iterator,
-    I::Item: Pattern<T>,
-{
-    let patterns: Rc<[I::Item]> = pats.collect();
-    move |segment: Segment| {
-        let patterns = patterns.clone();
-        segment
-            .split_on_cycles()
-            .into_iter()
-            .flat_map(move |cycle| {
-                let mut rng = rand::rng();
-                let len = patterns.len();
-                let index = rng.random_range(0..len);
-                let pattern = &patterns[index];
-                pattern.query(cycle.clone())
-            })
-    }
-}
-
 pub fn keyed(key: &'static str, values: impl Pattern<OscType>) -> impl Pattern<ControlMessage> {
     move |segment| {
         values.query(segment).map(move |event| {
