@@ -6,10 +6,12 @@ use num::FromPrimitive;
 
 use rosc::OscType;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 
 use crate::note::Note;
-use crate::pattern::{self, fastcat, filter_map_output, filter_map_result_output, in_parallel, speed_up, empty};
+use crate::pattern::{
+    self, empty, fastcat, filter_map_output, filter_map_result_output, in_parallel, speed_up,
+};
 use crate::pattern::{BoxPattern, Pattern, filter_output, map_output, slowcat};
 use crate::superdirt::ControlMessage;
 use crate::time;
@@ -219,19 +221,26 @@ impl TryFrom<Value> for ControlMessage {
     }
 }
 
-
 fn compute_external(name: String, args: Vec<Value>) -> Result<Value> {
     let arg1 = |args: Vec<Value>| -> Result<Value> {
         match &args[..] {
             [a] => Ok(a.clone()),
-            _ => bail!("expected 1 arguments to {}, but got {} instead", &name, args.len()),
+            _ => bail!(
+                "expected 1 arguments to {}, but got {} instead",
+                &name,
+                args.len()
+            ),
         }
     };
 
     let arg2 = |args: Vec<Value>| -> Result<(Value, Value)> {
         match &args[..] {
             [a1, a2] => Ok((a1.clone(), a2.clone())),
-            _ => bail!("expected 2 arguments to {}, but got {} instead", &name, args.len()),
+            _ => bail!(
+                "expected 2 arguments to {}, but got {} instead",
+                &name,
+                args.len()
+            ),
         }
     };
 
@@ -286,10 +295,10 @@ fn compute_external(name: String, args: Vec<Value>) -> Result<Value> {
             let (scale_pat, note_pat) = arg2(args)?;
             let scale_pat =
                 filter_map_result_output(to_pattern(scale_pat), |val| try_atom(val)?.try_into());
-            let note_pat =
-                filter_map_output(filter_map_result_output(to_pattern(note_pat), try_number), |num| {
-                    Some(Note::new(num.floor().to_i8()?))
-                });
+            let note_pat = filter_map_output(
+                filter_map_result_output(to_pattern(note_pat), try_number),
+                |num| Some(Note::new(num.floor().to_i8()?)),
+            );
             Ok(Value::Pattern(
                 filter_map_output(pattern::scale(note_pat, scale_pat), |note| {
                     Some(Value::Number(BigRational::from_i8(note.value())?))
@@ -314,9 +323,7 @@ fn compute_external(name: String, args: Vec<Value>) -> Result<Value> {
                 map_output(pat_result, Value::Number).boxed(),
             ))
         }
-        "empty" => {
-            Ok(Value::Pattern(empty().boxed()))
-        }
+        "empty" => Ok(Value::Pattern(empty().boxed())),
         "modamp" => key_number("modamp", args),
         "accelerate" => key_number("accelerate", args),
         "velocity" => key_number("velocity", args),
@@ -373,7 +380,10 @@ pub fn eval_pattern(expr: Expr) -> Result<BoxPattern<Value>> {
 
     match value {
         Value::Pattern(pat) => Ok(pat),
-        _ => bail!("failed evaluating code as a pattern, got value {} instead", value)
+        _ => bail!(
+            "failed evaluating code as a pattern, got value {} instead",
+            value
+        ),
     }
 }
 
@@ -395,12 +405,17 @@ fn eval_with(env: &mut Environment, expr: Expr) -> Result<Value> {
             compute_external(name, arg_values)
         }
         Expr::Apply(f, arg) => {
-            let (name, subexpr) = match eval_with(env, *f).with_context(|| "while evaluating function of function application".to_string())? {
-                Value::Lambda(name, subexpr) => Ok::<(String, Expr), anyhow::Error>((name, subexpr)),
+            let (name, subexpr) = match eval_with(env, *f)
+                .with_context(|| "while evaluating function of function application".to_string())?
+            {
+                Value::Lambda(name, subexpr) => {
+                    Ok::<(String, Expr), anyhow::Error>((name, subexpr))
+                }
                 val => bail!("tried applying a non-function value {val}"),
             }?;
 
-            let arg_value = eval_with(env, *arg).with_context(|| "while evaluating argument of function application")?;
+            let arg_value = eval_with(env, *arg)
+                .with_context(|| "while evaluating argument of function application")?;
             let old_value = env.variable_map.insert(name.clone(), arg_value);
 
             let result = eval_with(env, subexpr)?;
@@ -417,7 +432,7 @@ fn eval_with(env: &mut Environment, expr: Expr) -> Result<Value> {
                 .into_iter()
                 .map(|expr| eval_with(env, expr))
                 .collect::<Result<_>>()
-                .with_context(|| "while evaluating elements of a vector".to_string())?
+                .with_context(|| "while evaluating elements of a vector".to_string())?,
         )),
         Expr::Var(name) => {
             if EXTERNAL_ARG1.contains(name.as_str()) {

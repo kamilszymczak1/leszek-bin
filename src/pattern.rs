@@ -394,13 +394,11 @@ where
     P: Pattern<T>,
     F: Fn(T) -> Result<U> + Clone,
 {
-    filter_output(map_output(pat, move |input| {
-        match f(input) {
-            Ok(output) => Some(output),
-            Err(e) => {
-                eprintln!("error in pattern while applying fallible function: {}", e);
-                None
-            }
+    filter_output(map_output(pat, move |input| match f(input) {
+        Ok(output) => Some(output),
+        Err(e) => {
+            eprintln!("error in pattern while applying fallible function: {}", e);
+            None
         }
     }))
 }
