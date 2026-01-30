@@ -9,6 +9,9 @@ use crate::note::Note;
 use crate::pattern::{self, fastcat, filter_map_output, in_parallel, speed_up};
 use crate::pattern::{BoxPattern, Pattern, filter_output, map_output, slowcat};
 use crate::superdirt::ControlMessage;
+use crate::time;
+
+use num::ToPrimitive;
 
 use num::ToPrimitive;
 
@@ -31,6 +34,7 @@ pub fn apply(f: Expr, arg: Expr) -> Expr {
     Expr::Apply(Box::new(f), Box::new(arg))
 }
 
+#[allow(dead_code)]
 pub fn atom(str: &str) -> Expr {
     Expr::Atom(String::from(str))
 }
@@ -377,7 +381,7 @@ fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use crate::lang::*;
-    use crate::pattern;
+    use crate::time;
 
     #[test]
     fn test_eval() {
@@ -386,8 +390,8 @@ mod tests {
             Expr::Apply(
                 Box::new(Expr::Var(String::from("slowcat"))),
                 Box::new(Expr::Vector(vec![
-                    Expr::Number(pattern::frac(0, 1)),
-                    Expr::Number(pattern::frac(1, 1)),
+                    Expr::Number(time::frac(0, 1)),
+                    Expr::Number(time::frac(1, 1)),
                 ])),
             ),
         );

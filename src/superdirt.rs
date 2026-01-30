@@ -7,7 +7,9 @@ use std::net::UdpSocket;
 
 use rosc::{self, OscBundle, OscMessage, OscPacket, OscType};
 
-use crate::pattern::{Event, Pattern, Segment, Time};
+use crate::pattern::{Event, Pattern};
+use crate::segment::Segment;
+use crate::time::Time;
 
 struct ServerContext {
     start_time: SystemTime,
@@ -118,7 +120,6 @@ where
             .flat_map(|pat| pat.query(seg.clone()))
             .filter_map(|msg| {
                 println!("{:?}", msg);
-                
                 encode_message(&ctx, msg)
             })
             .for_each(|packet| {
