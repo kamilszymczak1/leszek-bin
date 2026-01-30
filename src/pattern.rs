@@ -402,8 +402,8 @@ mod tests {
     use crate::{
         note::Note,
         pattern::{
-            Pattern, Segment, Time, cycled, display_pattern, empty, fastcat, in_parallel,
-            scale, slowcat, speed_up, structure,
+            Pattern, Segment, Time, cycled, display_pattern, empty, fastcat, in_parallel, scale,
+            slowcat, speed_up, structure,
         },
         scale::Scale,
         segment::cycle_segment_from_time,
