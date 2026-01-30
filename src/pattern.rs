@@ -1,7 +1,5 @@
 use num::BigRational;
-use num::rational::Ratio;
-use num::{self, BigInt};
-use num_traits::cast::ToPrimitive;
+use num::{self};
 use rand::Rng;
 use rosc::OscType;
 

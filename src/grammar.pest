@@ -1,5 +1,5 @@
 WHITESPACE = _{ " " | "\t" | "\n" }
-number = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT*)? }
+number = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT*)? }
 
 dot = { "." }
 at = { "@" }
