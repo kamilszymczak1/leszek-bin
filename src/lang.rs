@@ -4,7 +4,7 @@ use num::BigRational;
 
 use rosc::OscType;
 
-use crate::pattern::{self, fastcat, filter_map_output, scale, speed_up};
+use crate::pattern::{self, fastcat, filter_map_output, in_parallel, scale, speed_up};
 use crate::pattern::{BoxPattern, Pattern, slowcat, map_output, filter_output};
 use crate::superdirt::ControlMessage;
 
@@ -162,6 +162,9 @@ fn compute_external(name: String, mut args: Vec<Value>) -> Option<Value> {
         "fastcat" => {
             Some(Value::Pattern(fastcat(get_vector(arg1(args)?)?.into_iter().map(to_pattern)).boxed()))
         },
+        "par" => {
+            Some(Value::Pattern(in_parallel(get_vector(arg1(args)?)?.into_iter().map(to_pattern)).boxed()))
+        }
         "sound" => {
             key("s", args)
         },
@@ -284,6 +287,7 @@ fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
                 "fc" => { Some(wrap_f1(String::from("fastcat"))) },
                 "s" => { Some(wrap_f1(String::from("sound"))) },
                 "n" => { Some(wrap_f1(String::from("n"))) }
+                "par" => { Some(wrap_f1(String::from("par"))) }
                 "fast" => { Some(wrap_f2(String::from("fast"))) }
                 "slow" => { Some(wrap_f2(String::from("slow"))) }
                 "add" => { Some(wrap_f2(String::from("add"))) }

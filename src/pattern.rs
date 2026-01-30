@@ -540,7 +540,6 @@ where
     })
 }
 
-
 #[cfg(test)]
 mod tests {
     use crate::{note::Note, scale::Scale, pattern::{Pattern, Segment, Time, cycled, display_pattern, fastcat, frac, in_parallel, random_slowcat, slowcat, speed_up, scale}};

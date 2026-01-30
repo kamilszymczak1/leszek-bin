@@ -3,11 +3,11 @@ use std::sync::LazyLock;
 use anyhow::{Result, anyhow};
 use pest::Parser;
 use pest::iterators::Pairs;
-use pest::pratt_parser::{Assoc, PrattParser};
+use pest::pratt_parser::{Assoc, Op, PrattParser};
 
 use num::{BigRational, FromPrimitive};
 
-use crate::lang::Expr;
+use crate::lang::{Expr, apply, var};
 
 #[derive(pest_derive::Parser)]
 #[grammar = "grammar.pest"]
@@ -18,6 +18,7 @@ static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     use Assoc::*;
 
     PrattParser::new()
+        .op(Op::infix(dot, Left))
 });
 
 pub fn parse(input: &str) -> Result<Expr> {
@@ -52,6 +53,14 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<Expr> {
                     Ok(Expr::Vector(vec))
                 },
                 _ => Err(anyhow!("Unexpected primary: {:?}", primary)),
+            }
+        })
+        .map_infix(|lhs, op, rhs| {
+            match op.as_rule() {
+                Rule::dot => {
+                    Ok(apply(apply(var("merge"), lhs?), rhs?))
+                },
+                _ => Err(anyhow!("Unexpected operator: {:?}", op)),
             }
         })
         .parse(pairs)
