@@ -1,4 +1,5 @@
 mod client;
+mod eval;
 mod note;
 mod scale;
 mod segment;
@@ -20,8 +21,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
-use crate::pattern::BoxPattern;
-use crate::superdirt::ControlMessage;
+use crate::pattern::Pattern;
 
 #[derive(Parser)]
 #[command(name = "leszek")]
@@ -47,17 +47,11 @@ enum Commands {
         /// File to track and send to the server
         file: String,
     },
-    /// Run in standalone mode (default)
+    /// Run in standalone mode
     Standalone {
         /// File to track and play
         file: String,
     },
-}
-
-/// Loads and parses a code string, returning the pattern to play.
-fn parse_code(code: &str) -> Result<BoxPattern<ControlMessage>> {
-    let parsed = parser::parse(code)?;
-    lang::eval_control_pattern(parsed)
 }
 
 fn main() {
@@ -90,7 +84,7 @@ fn run_collaboration_server(bind: &str) {
     });
 }
 
-/// Runs in standalone mode (original behavior).
+/// Runs in standalone mode.
 fn run_standalone(tracked_file: &str) {
     let tracked_file = tracked_file.to_string();
 
@@ -120,23 +114,26 @@ fn run_standalone(tracked_file: &str) {
     println!("Watching {} for changes...", tracked_file);
 
     // Create the pattern loader for the tracked file
-    let load_patterns = move || match std::fs::read_to_string(&tracked_file) {
-        Ok(code) => {
-            println!("Successfully loaded {}", tracked_file);
-            match parse_code(&code) {
-                Ok(pat) => Some(vec![pat]),
-                Err(e) => {
-                    eprintln!("Error: {}", e);
-                    None
+    let load_pattern = move || {
+        let pattern = match std::fs::read_to_string(&tracked_file) {
+            Ok(code) => {
+                println!("Successfully loaded {}", tracked_file);
+                match eval::parse_and_eval_code(&code) {
+                    Ok(pat) => Some(pat),
+                    Err(e) => {
+                        eprintln!("Error parsing code: {}", e);
+                        None
+                    }
                 }
             }
-        }
-        Err(e) => {
-            eprintln!("Failed to read {}: {}", tracked_file, e);
-            None
-        }
+            Err(e) => {
+                eprintln!("Failed to read {}: {}", tracked_file, e);
+                None
+            }
+        };
+        pattern.unwrap_or(pattern::empty().boxed())
     };
 
     // Run the server (this blocks forever)
-    superdirt::run_server(load_patterns, reload_flag);
+    superdirt::run_server(load_pattern, reload_flag);
 }

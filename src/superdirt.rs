@@ -104,14 +104,14 @@ const SEND_BEFORE: Duration = Duration::from_millis(100);
 /// * `load_patterns` - A function that loads and returns the current patterns
 /// * `reload_flag` - An atomic flag that signals when patterns should be reloaded;
 ///   when set to true, patterns are reloaded and playback restarts from the beginning
-pub fn run_server<F>(load_patterns: F, reload_flag: Arc<AtomicBool>)
+pub fn run_server<F>(load_pattern: F, reload_flag: Arc<AtomicBool>)
 where
-    F: Fn() -> Option<Vec<BoxPattern<ControlMessage>>>,
+    F: Fn() -> BoxPattern<ControlMessage>,
 {
     let cps = 1.0;
     let ctx = ServerContext::new(cps);
     let mut sent_until = Time::new(0, 1);
-    let mut pats = load_patterns().expect("Failed to load initial patterns");
+    let mut pattern = load_pattern();
     let mut bytes = Vec::new();
 
     let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
@@ -120,18 +120,13 @@ where
         // Check for pattern reload
         if reload_flag.swap(false, Ordering::SeqCst) {
             println!("Reloading patterns...");
-            if let Some(new_patterns) = load_patterns() {
-                pats = new_patterns;
-                println!("Patterns reloaded successfully!");
-            } else {
-                println!("Failed to reload patterns, keeping current ones");
-            }
+            pattern = load_pattern();
         }
 
-        let seg = Segment::new(sent_until.clone(), sent_until.clone() + Time::new(1, 1));
+        let segment = Segment::new(sent_until.clone(), sent_until.clone() + Time::new(1, 1));
 
-        pats.iter()
-            .flat_map(|pat| pat.query(seg.clone()))
+        pattern
+            .query(segment)
             .filter_map(|msg| encode_message(&ctx, msg))
             .for_each(|packet| {
                 bytes.clear();
