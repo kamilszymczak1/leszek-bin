@@ -269,7 +269,6 @@ pub fn eval_control_pattern(expr: Expr) -> Option<BoxPattern<ControlMessage>> {
 
 pub fn eval_pattern(expr: Expr) -> Option<BoxPattern<Value>> {
     let value = eval_with(&mut Environment::new(), expr)?;
-    dbg!(value.clone());
     if let Value::Pattern(pat) = value {
         return Some(pat);
     }
@@ -278,7 +277,6 @@ pub fn eval_pattern(expr: Expr) -> Option<BoxPattern<Value>> {
 }
 
 fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
-    dbg!(&env, expr.clone());
     let mut get_fresh_var = || {
         let fresh_var = format!("fresh{}", env.fresh_counter);
         env.fresh_counter += 1;
@@ -300,13 +298,6 @@ fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
                 _ => None,
             }?;
             let arg_value = eval_with(env, *arg)?;
-            dbg!(
-                "apply",
-                env.clone(),
-                name.clone(),
-                subexpr.clone(),
-                arg_value.clone()
-            );
             let old_value = env.variable_map.insert(name.clone(), arg_value);
 
             let result = eval_with(env, subexpr)?;
