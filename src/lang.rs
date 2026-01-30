@@ -13,8 +13,6 @@ use crate::time;
 
 use num::ToPrimitive;
 
-use num::ToPrimitive;
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Lambda(String, Box<Expr>),
@@ -179,7 +177,7 @@ fn compute_external(name: String, args: Vec<Value>) -> Option<Value> {
         }
         "slow" => {
             let (rate, pat) = arg2(args)?;
-            let out_pat = speed_up(as_pattern(pat)?, pattern::frac(1, 1) / as_number(rate)?);
+            let out_pat = speed_up(as_pattern(pat)?, time::frac(1, 1) / as_number(rate)?);
             Some(Value::Pattern(out_pat.boxed()))
         }
         "merge" => {
