@@ -504,18 +504,17 @@ where
 
         let mut results = Vec::new();
         for fevent in first.query(segment.clone()) {
-            second_events.iter().filter_map(
+            second_events.iter().filter(
+                |sevent| fevent.part.part.intersection(&sevent.part.part).is_some()
+            )
+            .min_by_key(
                 |sevent| {
-                    fevent.part.part.intersection(&sevent.part.part).map(
-                        |_| fevent.clone().map_value(
-                            |v| f(v, sevent.value.clone())
-                        )
-                    )
+                    sevent.part.part.start.clone()
                 }
-            ).min_by_key(
-                |ev| ev.part.part.start.clone()
-            ).iter().for_each(
-                |ev| results.push(ev.clone())
+            ).map(
+                |sevent| {
+                    results.push(fevent.map_value(|v| f(v, sevent.value.clone())));
+                }
             );
         }
         results.into_iter()
@@ -563,7 +562,7 @@ where
 pub fn scale<P, Q>(pattern : P, scales: Q) -> impl Pattern<Note>
 where P: Pattern<Note>, Q: Pattern<Scale>
 {
-    combine(
+    combine_left(
         pattern,
         scales,
         |note, scale| {
