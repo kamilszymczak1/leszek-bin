@@ -1,5 +1,7 @@
 use num::BigRational;
 use num_traits::cast::ToPrimitive;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
@@ -7,7 +9,7 @@ use std::net::UdpSocket;
 
 use rosc::{self, OscBundle, OscMessage, OscPacket, OscType};
 
-use crate::pattern::{Event, Pattern};
+use crate::pattern::{BoxPattern, Event, Pattern};
 use crate::segment::Segment;
 use crate::time::Time;
 
@@ -100,20 +102,40 @@ fn encode_message(ctx: &ServerContext, message: Event<ControlMessage>) -> Option
 
 const SEND_BEFORE: Duration = Duration::from_millis(100);
 
-pub fn run_server<I>(patterns: I)
+/// Runs the SuperDirt server loop with support for live pattern reloading.
+///
+/// # Arguments
+///
+/// * `load_patterns` - A function that loads and returns the current patterns
+/// * `reload_flag` - An atomic flag that signals when patterns should be reloaded;
+///   when set to true, patterns are reloaded and playback restarts from the beginning
+pub fn run_server<F>(load_patterns: F, reload_flag: Arc<AtomicBool>)
 where
-    I: Iterator,
-    I::Item: Pattern<ControlMessage>,
+    F: Fn() -> Option<Vec<BoxPattern<ControlMessage>>>,
 {
     let cps = 1.0;
-    let ctx = ServerContext::new(cps);
+    let mut ctx = ServerContext::new(cps);
     let mut sent_until = Time::new(0, 1);
-    let pats: Vec<I::Item> = patterns.collect();
+    let mut pats = load_patterns().expect("Failed to load initial patterns");
     let mut bytes = Vec::new();
 
-    let socket = UdpSocket::bind("0.0.0.0:6767").unwrap();
+    let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
 
     loop {
+        // Check for pattern reload
+        if reload_flag.swap(false, Ordering::SeqCst) {
+            println!("Reloading patterns...");
+            if let Some(new_patterns) = load_patterns() {
+                pats = new_patterns;
+                // Reset timing to start fresh
+                ctx = ServerContext::new(cps);
+                sent_until = Time::new(0, 1);
+                println!("Patterns reloaded successfully!");
+            } else {
+                println!("Failed to reload patterns, keeping current ones");
+            }
+        }
+
         let seg = Segment::new(sent_until.clone(), sent_until.clone() + Time::new(1, 1));
 
         pats.iter()

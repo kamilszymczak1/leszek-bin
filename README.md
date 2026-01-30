@@ -94,11 +94,52 @@ Keep this terminal running while using Leszek.
 
 ### Step 2: Run Leszek
 
-In a separate terminal, run:
+Leszek supports three modes of operation:
+
+#### Standalone Mode
+
+Run Leszek with a local file:
 
 ```bash
-cargo run
+cargo run -- standalone myfile.code
 ```
+
+This watches the specified file for changes and plays the pattern through SuperDirt.
+
+#### Collaborative Mode
+
+Leszek supports real-time collaboration where multiple users can work on patterns simultaneously, with all patterns combined and played in parallel.
+
+**Start the collaboration server** (on one machine):
+
+```bash
+cargo run -- server
+```
+
+By default, the server listens on `0.0.0.0:9999`. To use a different address:
+
+```bash
+cargo run -- server --bind 192.168.1.100:8888
+```
+
+**Connect as a client** (on each participant's machine):
+
+```bash
+cargo run -- collab myfile.code
+```
+
+By default, clients connect to `127.0.0.1:9999`. To connect to a remote server:
+
+```bash
+cargo run -- collab --server 192.168.1.100:9999 myfile.code
+```
+
+Each client edits their own local file. When any client saves changes:
+1. The update is sent to the server
+2. The server broadcasts it to all other clients
+3. Each client combines all patterns using `in_parallel` and plays them locally
+
+This allows multiple musicians to jam together in real-time, each contributing their own patterns to the mix.
 
 ## Syntax
 
