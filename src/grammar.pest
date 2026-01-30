@@ -1,8 +1,11 @@
 WHITESPACE = _{ " " | "\t" | "\n" }
 number = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT*)? }
+
 dot = { "." }
+at = { "@" }
+
 infix_op = _{
-    dot
+    dot | at
 }
 
 string = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }

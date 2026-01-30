@@ -205,8 +205,8 @@ fn compute_external(name: String, args: Vec<Value>) -> Option<Value> {
         }
         "struct" => {
             let (arg0, arg1) = arg2(args)?;
-            let pat = to_pattern(arg0);
-            let filter_pat = to_pattern(arg1);
+            let filter_pat = to_pattern(arg0);
+            let pat = to_pattern(arg1);
             Some(Value::Pattern(
                 pattern::structure(pat, map_output(filter_pat, |_| ())).boxed(),
             ))

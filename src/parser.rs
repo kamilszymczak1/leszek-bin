@@ -46,7 +46,9 @@ static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     use Assoc::*;
     use Rule::*;
 
-    PrattParser::new().op(Op::infix(dot, Left))
+    PrattParser::new()
+        .op(Op::infix(dot, Left))
+        .op(Op::infix(at, Left))
 });
 
 /// Parses a string into an expression AST.
@@ -106,8 +108,8 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<Expr> {
             }
         })
         .map_infix(|lhs, op, rhs| match op.as_rule() {
-            // The `.` operator desugars to: merge(lhs, rhs)
-            Rule::dot => Ok(apply(apply(var("merge"), lhs?), rhs?)),
+            Rule::dot => Ok(apply(rhs?, lhs?)),
+            Rule::at => Ok(apply(apply(var("merge"), lhs?), rhs?)),
             _ => Err(anyhow!("Unexpected operator: {:?}", op)),
         })
         .parse(pairs)

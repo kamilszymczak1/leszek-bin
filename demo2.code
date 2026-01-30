@@ -1,11 +1,10 @@
 n([0, 8, 4, 6, 9, 2, 0, 2]
-    .fc
+    .fc()
     .fast(3)
     .add(slow(4, cat([0, 2])))
     .scale(["cminor", "cmajor"].cat)
-    .struct("x".fast(8))
-    .slow(2)
-    )
+    .struct(fast(8, "x"))
+    .slow(2))
     @room(0.2)
     @s("superpiano")
-    @velocity(fast(8, fast(2, cat([0.9, 0.6, 0.7]
+    @velocity(fast(8, fast(2, cat([0.9, 0.6, 0.7]))))
