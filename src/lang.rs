@@ -207,6 +207,13 @@ fn compute_external(name: String, mut args: Vec<Value>) -> Option<Value> {
             let filter_pat = to_pattern(arg1);
             Some(Value::Pattern(pattern::structure(pat, map_output(filter_pat, |_| ())).boxed()))
         },
+        "add" => {
+            let (arg0, arg1) = arg2(args)?;
+            let pat0 = filter_map_output(to_pattern(arg0), as_number);
+            let pat1 = filter_map_output(to_pattern(arg1), as_number);
+            let pat_result = pattern::combine(pat0, pat1, |l, r| l + r);
+            Some(Value::Pattern(map_output(pat_result, Value::Number).boxed()))
+        },
         "velocity" => key_number("velocity", args),
         "clip" => key_number("clip", args),
         "delay" => key_number("delay", args),
