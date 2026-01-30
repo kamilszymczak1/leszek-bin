@@ -1,3 +1,31 @@
+//! Language interpreter module for Leszek's pattern DSL.
+//!
+//! This module implements an interpreter for the Leszek pattern language, transforming
+//! parsed expressions into executable patterns. It supports a functional programming style
+//! with lambda expressions, function application, and built-in pattern combinators.
+//!
+//! # Architecture
+//!
+//! The interpreter uses a two-stage evaluation:
+//! 1. Expressions (`Expr`) represent the parsed AST from the grammar
+//! 2. Values (`Value`) represent evaluated results including patterns, numbers, and atoms
+//!
+//! # Built-in Functions
+//!
+//! Pattern constructors:
+//! - `cat`, `fc`: Sequential pattern concatenation (slow and fast variants)
+//! - `par`: Parallel pattern combination
+//! - `n`, `s`: Note and sound control messages
+//!
+//! Pattern transformers:
+//! - `fast`, `slow`: Speed up or slow down patterns
+//! - `scale`, `transpose`: Musical scale and transposition
+//! - `struct`: Apply rhythmic structure
+//! - `add`, `merge`: Combine pattern values
+//!
+//! Control parameters:
+//! - `velocity`, `room`, `delay`, `accelerate`, `clip`, `modamp`: SuperDirt effects
+
 use std::collections::HashMap;
 
 use anyhow::Context;
@@ -22,6 +50,8 @@ use std::sync::LazyLock;
 
 use num::ToPrimitive;
 
+/// Built-in functions that take exactly one argument.
+/// These are automatically wrapped in a lambda during evaluation.
 static EXTERNAL_ARG1: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     HashSet::from([
         "cat",
@@ -38,6 +68,8 @@ static EXTERNAL_ARG1: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     ])
 });
 
+/// Built-in functions that take exactly two arguments.
+/// These are automatically wrapped in nested lambdas during evaluation.
 static EXTERNAL_ARG2: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     HashSet::from([
         "scale",
@@ -50,14 +82,25 @@ static EXTERNAL_ARG2: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     ])
 });
 
+/// Abstract syntax tree for the Leszek language.
+///
+/// Expressions represent the parsed structure of code before evaluation.
+/// The interpreter transforms these into `Value`s during execution.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
+    /// Lambda abstraction: `\x -> body`
     Lambda(String, Box<Expr>),
+    /// Function application: `f x`
     Apply(Box<Expr>, Box<Expr>),
+    /// String atom (identifier or string literal)
     Atom(String),
+    /// Numeric literal with arbitrary precision
     Number(BigRational),
+    /// Built-in function call with arguments
     External(String, Vec<Expr>),
+    /// Vector/list literal: `[a, b, c]`
     Vector(Vec<Expr>),
+    /// Variable reference
     Var(String),
 }
 
@@ -74,13 +117,23 @@ pub fn atom(str: &str) -> Expr {
     Expr::Atom(String::from(str))
 }
 
+/// Runtime values produced by the interpreter.
+///
+/// Values are the result of evaluating expressions. They can represent
+/// immediate data (numbers, atoms) or deferred computation (patterns, lambdas).
 #[derive(Clone)]
 pub enum Value {
+    /// Unevaluated lambda expression awaiting an argument
     Lambda(String, Expr),
+    /// String value (sample name, scale name, etc.)
     Atom(String),
+    /// Numeric value with arbitrary precision
     Number(BigRational),
+    /// SuperDirt control message (sound parameters)
     Message(ControlMessage),
+    /// Time-varying pattern of values
     Pattern(BoxPattern<Value>),
+    /// Collection of values
     Vector(Vec<Value>),
 }
 
@@ -230,6 +283,10 @@ impl TryFrom<Value> for ControlMessage {
     }
 }
 
+/// Evaluates a built-in function call with the given arguments.
+///
+/// This is the core dispatch for all built-in pattern operations.
+/// Each function transforms its arguments into pattern operations.
 fn compute_external(name: String, args: Vec<Value>) -> Result<Value> {
     let arg1 = |args: Vec<Value>| -> Result<Value> {
         match &args[..] {
@@ -377,6 +434,11 @@ fn wrap_f2(fresh_var0: String, fresh_var1: String, name: String) -> Value {
     )
 }
 
+/// Evaluation environment holding variable bindings.
+///
+/// The environment tracks:
+/// - A counter for generating fresh variable names during lambda wrapping
+/// - A map from variable names to their bound values
 #[derive(Debug, Clone)]
 pub struct Environment {
     fresh_counter: u16,
@@ -392,11 +454,19 @@ impl Environment {
     }
 }
 
+/// Evaluates an expression and extracts a pattern of control messages.
+///
+/// This is the main entry point for evaluating code that will be sent to SuperDirt.
+/// Returns a pattern of `ControlMessage` values ready for playback.
 pub fn eval_control_pattern(expr: Expr) -> Result<BoxPattern<ControlMessage>> {
     let value_pattern = eval_pattern(expr)?;
     Ok(filter_map_result_output(value_pattern, try_control).boxed())
 }
 
+/// Evaluates an expression and returns the resulting pattern.
+///
+/// The expression must evaluate to a `Value::Pattern`. Other value types
+/// will result in an error.
 pub fn eval_pattern(expr: Expr) -> Result<BoxPattern<Value>> {
     let value = eval_with(&mut Environment::new(), expr)
         .with_context(|| "while trying to evaluate code as a pattern".to_string())?;
