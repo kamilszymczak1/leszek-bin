@@ -59,13 +59,8 @@ fn cycles_to_system_time(ctx: &ServerContext, time: Time) -> SystemTime {
 const SUPERDIRT_ADDR: &str = "/dirt/play";
 
 fn encode_message(ctx: &ServerContext, message: Event<ControlMessage>) -> Option<OscPacket> {
-    // FIXME: check no reserved fields were used
-    // FIXME: remove duplicate fields
-
     let part = message.part;
     let fields = message.value.fields;
-    println!("{:?}", part.whole.clone());
-    println!("{:?}", part.part.clone());
     if let Some(whole) = part.whole
         && whole.start >= part.part.start
     {
@@ -137,10 +132,7 @@ where
 
         pats.iter()
             .flat_map(|pat| pat.query(seg.clone()))
-            .filter_map(|msg| {
-                println!("{:?}", msg);
-                encode_message(&ctx, msg)
-            })
+            .filter_map(|msg| encode_message(&ctx, msg))
             .for_each(|packet| {
                 bytes.clear();
                 rosc::encoder::encode_into(&packet, &mut bytes).unwrap();
