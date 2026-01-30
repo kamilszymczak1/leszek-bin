@@ -1,3 +1,27 @@
+//! Parser for the Leszek pattern language.
+//!
+//! This module parses text input into an abstract syntax tree (`Expr`).
+//! It uses the [pest](https://pest.rs/) parser generator with a Pratt parser
+//! for handling operator precedence (e.g., the `.` method chaining operator).
+//!
+//! # Syntax Overview
+//!
+//! The language supports:
+//! - **Numbers**: `42`, `3.14`, `0.5`
+//! - **Strings**: `"arpy"`, `"bd"`
+//! - **Identifiers**: `n`, `slow`, `cat`
+//! - **Function calls**: `slow(2, pattern)`, `n(fc([1, 2, 3]))`
+//! - **Vectors**: `[1, 2, 3]`, `[[1, 2], [3, 4]]`
+//! - **Method chaining**: `n(fc([1, 2])).s("arpy")` (using `.` operator)
+//!
+//! # Example
+//!
+//! ```text
+//! par([
+//!     n(scale(slow(2, cat(["cminor", "cmajor"])), fc([0, 3, 2, 1]))).s("arpy")
+//! ])
+//! ```
+
 use std::sync::LazyLock;
 
 use anyhow::{Result, anyhow};
@@ -9,10 +33,15 @@ use num::{BigRational, FromPrimitive};
 
 use crate::lang::{Expr, apply, var};
 
+/// The pest-generated parser using the grammar defined in `grammar.pest`.
 #[derive(pest_derive::Parser)]
 #[grammar = "grammar.pest"]
 pub struct LangParser;
 
+/// Pratt parser for handling operator precedence.
+///
+/// Currently only handles the `.` (dot) operator for method chaining,
+/// which is left-associative: `a.b.c` parses as `((a.b).c)`.
 static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     use Assoc::*;
     use Rule::*;
@@ -20,12 +49,33 @@ static PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
     PrattParser::new().op(Op::infix(dot, Left))
 });
 
+/// Parses a string into an expression AST.
+///
+/// This is the main entry point for parsing Leszek code.
+///
+/// # Arguments
+///
+/// * `input` - The source code to parse
+///
+/// # Returns
+///
+/// The parsed expression, or an error if parsing fails.
+///
+/// # Example
+///
+/// ```
+/// let expr = parse("n(fc([1, 2, 3])).s(\"arpy\")")?;
+/// ```
 pub fn parse(input: &str) -> Result<Expr> {
     let mut pairs = LangParser::parse(Rule::expr, input)?;
     let program_pair = pairs.next().unwrap();
     parse_expr(program_pair.into_inner())
 }
 
+/// Parses a sequence of tokens into an expression.
+///
+/// Handles primary expressions (numbers, strings, identifiers, calls, vectors)
+/// and infix operators (currently just `.` for method chaining).
 fn parse_expr(pairs: Pairs<Rule>) -> Result<Expr> {
     PRATT_PARSER
         .map_primary(|primary| {
@@ -37,12 +87,14 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<Expr> {
                     ))
                 }
                 Rule::string => {
+                    // Strip the surrounding quotes
                     let s = primary.as_str();
                     Ok(Expr::Atom(s[1..s.len() - 1].to_string()))
                 }
                 Rule::identifier => Ok(Expr::Var(primary.as_str().into())),
                 Rule::call => parse_call(primary.into_inner()),
                 Rule::vector => {
+                    // Recursively parse each element of the vector
                     let vec = primary
                         .into_inner()
                         .map(|pair| parse_expr(pair.into_inner()))
@@ -54,12 +106,20 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<Expr> {
             }
         })
         .map_infix(|lhs, op, rhs| match op.as_rule() {
+            // The `.` operator desugars to: merge(lhs, rhs)
             Rule::dot => Ok(apply(apply(var("merge"), lhs?), rhs?)),
             _ => Err(anyhow!("Unexpected operator: {:?}", op)),
         })
         .parse(pairs)
 }
 
+/// Parses a function call into an expression.
+///
+/// Converts `func(arg1, arg2, arg3)` into curried application:
+/// `((func arg1) arg2) arg3`
+///
+/// This allows partial application and matches the internal
+/// representation used by the interpreter.
 fn parse_call(mut pairs: Pairs<Rule>) -> Result<Expr> {
     let name = pairs.next().unwrap().as_str();
 
@@ -68,6 +128,7 @@ fn parse_call(mut pairs: Pairs<Rule>) -> Result<Expr> {
         args.push(parse_expr(arg.into_inner())?);
     }
 
+    // Build curried application: func(a, b) → ((func a) b)
     args.reverse();
     let mut result_expr = Expr::Var(String::from(name));
     while !args.is_empty() {
