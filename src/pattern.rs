@@ -225,6 +225,27 @@ where
     speed_up(slowcat(pats), frac(len as i64, 1))
 }
 
+pub fn _random_slowcat<T, I>(pats: I) -> impl Pattern<T>
+where
+    I: Iterator,
+    I::Item: Pattern<T>,
+{
+    let patterns: Rc<[I::Item]> = pats.collect();
+    move |segment: Segment| {
+        let patterns = patterns.clone();
+        segment
+            .split_on_cycles()
+            .into_iter()
+            .flat_map(move |cycle| {
+                let mut rng = rand::rng();
+                let len = patterns.len();
+                let index = rng.random_range(0..len);
+                let pattern = &patterns[index];
+                pattern.query(cycle.clone())
+            })
+    }
+}
+
 pub fn keyed(key: &'static str, values: impl Pattern<OscType>) -> impl Pattern<ControlMessage> {
     move |segment| {
         values.query(segment).map(move |event| {
@@ -386,23 +407,26 @@ where
     P: Pattern<Note>,
     Q: Pattern<String>,
 {
-    combine_left(pattern, scales, |note, note_str| 
-        Note::new(note.value() + match note_str.as_str() {
-            "c"  => 0,
-            "ch" => 1,
-            "d"  => 2,
-            "dh" => 3,
-            "e"  => 4,
-            "f"  => 5,
-            "fh" => 6,
-            "g"  => 7,
-            "gh" => 8,
-            "a"  => 9,
-            "ah" => 10,
-            "b"  => 11,
-            _    => 0,
-        })
-    )
+    combine_left(pattern, scales, |note, note_str| {
+        Note::new(
+            note.value()
+                + match note_str.as_str() {
+                    "c" => 0,
+                    "ch" => 1,
+                    "d" => 2,
+                    "dh" => 3,
+                    "e" => 4,
+                    "f" => 5,
+                    "fh" => 6,
+                    "g" => 7,
+                    "gh" => 8,
+                    "a" => 9,
+                    "ah" => 10,
+                    "b" => 11,
+                    _ => 0,
+                },
+        )
+    })
 }
 
 pub fn empty<T>() -> impl Pattern<T> {

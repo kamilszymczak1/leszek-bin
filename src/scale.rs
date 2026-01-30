@@ -105,7 +105,7 @@ pub fn map_note(scale: &Scale, note: Note) -> Note {
 impl TryInto<Scale> for String {
     type Error = anyhow::Error;
 
-   fn try_into(self) -> Result<Scale, Self::Error> {
+    fn try_into(self) -> Result<Scale, Self::Error> {
         match self.as_str() {
             "major" => Ok(Scale::Major),
             "minor" => Ok(Scale::Minor),
@@ -133,8 +133,7 @@ impl TryInto<Scale> for String {
             _ => bail!("unknown scale '{}'", self),
         }
     }
-    }
-
+}
 
 #[cfg(test)]
 mod test {

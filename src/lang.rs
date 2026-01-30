@@ -38,8 +38,17 @@ static EXTERNAL_ARG1: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     ])
 });
 
-static EXTERNAL_ARG2: LazyLock<HashSet<&'static str>> =
-    LazyLock::new(|| HashSet::from(["scale", "struct", "fast", "slow", "add", "merge", "transpose"]));
+static EXTERNAL_ARG2: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    HashSet::from([
+        "scale",
+        "struct",
+        "fast",
+        "slow",
+        "add",
+        "merge",
+        "transpose",
+    ])
+});
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -308,8 +317,7 @@ fn compute_external(name: String, args: Vec<Value>) -> Result<Value> {
         }
         "transpose" => {
             let (scale_pat, note_pat) = arg2(args)?;
-            let note_str_pat =
-                filter_map_result_output(to_pattern(scale_pat), |val| try_atom(val));
+            let note_str_pat = filter_map_result_output(to_pattern(scale_pat), try_atom);
             let note_pat = filter_map_output(
                 filter_map_result_output(to_pattern(note_pat), try_number),
                 |num| Some(Note::new(num.floor().to_i8()?)),
@@ -472,7 +480,7 @@ mod tests {
         let val = eval_with(
             &mut Environment::new(),
             Expr::Apply(
-                Box::new(Expr::Var(String::from("slowcat"))),
+                Box::new(Expr::Var(String::from("cat"))),
                 Box::new(Expr::Vector(vec![
                     Expr::Number(time::frac(0, 1)),
                     Expr::Number(time::frac(1, 1)),
@@ -481,13 +489,13 @@ mod tests {
         );
 
         assert_eq!(
-            format!("{:?}", val),
-            "Some(Pattern([0, 1) | Number(0)\n\
+            format!("{:?}", val.unwrap()),
+            "Pattern([0, 1) | Number(0)\n\
             [1, 2) | Number(1)\n\
             [2, 3) | Number(0)\n\
             [3, 4) | Number(1)\n\
             [4, 5) | Number(0)\n\
-            ))"
+            )"
         )
     }
 }
