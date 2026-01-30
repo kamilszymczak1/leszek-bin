@@ -127,9 +127,6 @@ where
             println!("Reloading patterns...");
             if let Some(new_patterns) = load_patterns() {
                 pats = new_patterns;
-                // Reset timing to start fresh
-                ctx = ServerContext::new(cps);
-                sent_until = Time::new(0, 1);
                 println!("Patterns reloaded successfully!");
             } else {
                 println!("Failed to reload patterns, keeping current ones");
