@@ -231,6 +231,7 @@ fn eval_with(env: &mut Environment, expr: Expr) -> Option<Value> {
 mod tests {
     use crate::pattern;
     use crate::lang::*;
+    use crate::time;
 
     #[test]
     fn test_eval() {
@@ -238,8 +239,8 @@ mod tests {
             Expr::Apply(
                 Box::new(Expr::Var(String::from("slowcat"))),
                 Box::new(Expr::Vector(vec![
-                        Expr::Number(pattern::frac(0, 1)), 
-                        Expr::Number(pattern::frac(1, 1))
+                        Expr::Number(time::frac(0, 1)), 
+                        Expr::Number(time::frac(1, 1))
                 ])),
             )
         );

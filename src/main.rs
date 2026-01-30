@@ -1,5 +1,7 @@
 mod note;
 mod scale;
+mod time;
+mod segment;
 
 mod superdirt;
 mod pattern;
