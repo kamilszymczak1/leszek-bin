@@ -192,13 +192,19 @@ pub struct CollaborationClient {
 
 impl CollaborationClient {
     /// Connects to a collaboration server.
-    pub async fn connect(server_addr: &str) -> Result<(Self, tokio::task::JoinHandle<()>)> {
+    /// Returns the client, an update notification receiver, and a handle to the reader task.
+    pub async fn connect(
+        server_addr: &str,
+    ) -> Result<(Self, mpsc::Receiver<()>, tokio::task::JoinHandle<()>)> {
         let stream = TcpStream::connect(server_addr).await?;
         println!("Connected to collaboration server at {}", server_addr);
 
         let (reader, writer) = stream.into_split();
         let clients: Arc<RwLock<HashMap<String, String>>> = Arc::new(RwLock::new(HashMap::new()));
         let clients_clone = Arc::clone(&clients);
+
+        // Channel to notify when updates are received
+        let (update_tx, update_rx) = mpsc::channel::<()>(16);
 
         // Spawn a task to handle incoming messages
         let handle = tokio::spawn(async move {
@@ -226,6 +232,8 @@ impl CollaborationClient {
                                     state.remove(&client_ip);
                                 }
                             }
+                            // Notify that an update was received
+                            let _ = update_tx.send(()).await;
                         }
                     }
                     Err(e) => {
@@ -236,7 +244,7 @@ impl CollaborationClient {
             }
         });
 
-        Ok((Self { writer, clients }, handle))
+        Ok((Self { writer, clients }, update_rx, handle))
     }
 
     /// Sends a code update to the server.

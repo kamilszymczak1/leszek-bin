@@ -122,13 +122,14 @@ fn run_collaboration_client(server_addr: &str, tracked_file: &str) {
 
     rt.block_on(async {
         // Connect to the server
-        let (mut client, _handle) = match network::CollaborationClient::connect(server_addr).await {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("Failed to connect to server: {}", e);
-                return;
-            }
-        };
+        let (mut client, mut network_update_rx, _handle) =
+            match network::CollaborationClient::connect(server_addr).await {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Failed to connect to server: {}", e);
+                    return;
+                }
+            };
 
         // Shared state for the combined patterns from all clients
         let combined_clients: Arc<RwLock<HashMap<String, String>>> = Arc::clone(&client.clients);
@@ -160,29 +161,28 @@ fn run_collaboration_client(server_addr: &str, tracked_file: &str) {
 
         println!("Watching {} for changes...", tracked_file);
 
-        // Spawn a task to send local file updates to the server when notified by watcher
+        // Spawn a task to send local file updates to the server
+        // Sends initial content immediately, then waits for watcher notifications
         tokio::spawn(async move {
-            while file_changed_rx.recv().await.is_some() {
+            loop {
                 if let Ok(content) = std::fs::read_to_string(&tracked_file) {
                     if let Err(e) = client.send_code_update(content).await {
                         eprintln!("Failed to send code update: {}", e);
                     }
                 }
+
+                // Wait for next file change (first iteration runs immediately)
+                if file_changed_rx.recv().await.is_none() {
+                    break;
+                }
             }
         });
 
-        // Spawn a task to watch for network updates
-        let combined_clients_watch = Arc::clone(&combined_clients);
+        // Spawn a task to watch for network updates (notified via channel)
         tokio::spawn(async move {
-            let mut last_state: HashMap<String, String> = HashMap::new();
-            loop {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                let current_state = combined_clients_watch.read().await.clone();
-                if current_state != last_state {
-                    println!("Network state updated, signaling reload...");
-                    reload_flag_network.store(true, Ordering::SeqCst);
-                    last_state = current_state;
-                }
+            while network_update_rx.recv().await.is_some() {
+                println!("Network state updated, signaling reload...");
+                reload_flag_network.store(true, Ordering::SeqCst);
             }
         });
 
