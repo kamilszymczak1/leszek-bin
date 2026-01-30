@@ -12,7 +12,8 @@ string = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
 vector = { "[" ~ (expr ~ ("," ~ expr)*)? ~ "]" }
 identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 call = { identifier ~ "(" ~ expr ~ ( "," ~ expr )* ~ ")"  }
-atom = _{ call | identifier ~ !("(") | number | "(" ~ expr ~ ")" | vector | string }
+empty = { "~" }
+atom = _{ call | identifier ~ !("(") | number | "(" ~ expr ~ ")" | vector | string | empty }
 
 expr = { 
     atom ~ (infix_op ~ atom)*

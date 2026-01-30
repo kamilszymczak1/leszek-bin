@@ -9,7 +9,7 @@ use rosc::OscType;
 use anyhow::{anyhow, bail, Result};
 
 use crate::note::Note;
-use crate::pattern::{self, fastcat, filter_map_output, filter_map_result_output, in_parallel, speed_up};
+use crate::pattern::{self, fastcat, filter_map_output, filter_map_result_output, in_parallel, speed_up, empty};
 use crate::pattern::{BoxPattern, Pattern, filter_output, map_output, slowcat};
 use crate::superdirt::ControlMessage;
 use crate::time;
@@ -313,6 +313,9 @@ fn compute_external(name: String, args: Vec<Value>) -> Result<Value> {
             Ok(Value::Pattern(
                 map_output(pat_result, Value::Number).boxed(),
             ))
+        }
+        "empty" => {
+            Ok(Value::Pattern(empty().boxed()))
         }
         "modamp" => key_number("modamp", args),
         "accelerate" => key_number("accelerate", args),

@@ -103,6 +103,9 @@ fn parse_expr(pairs: Pairs<Rule>) -> Result<Expr> {
                         .collect::<Result<_>>()?;
 
                     Ok(Expr::Vector(vec))
+                },
+                Rule::empty => {
+                    Ok(Expr::External("empty".to_string(), vec![]))
                 }
                 _ => Err(anyhow!("Unexpected primary: {:?}", primary)),
             }

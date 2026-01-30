@@ -3,7 +3,7 @@ n([0, 8, 4, 6, 9, 2, 0, -2]
     .fast(3)
     .add(slow(4, cat([0, 2])))
     .scale(["cminor", "cmajor"].cat)
-    .struct("x".fast(8))
+    .struct([1, 1, 1, [~, 1].fc, 1, 1, 1, ~].fc)
     .slow(2)
     )
     @room(0.2)
